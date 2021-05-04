@@ -11,5 +11,5 @@
 extern crate std;
 
 pub mod bus;
-pub mod cpu;
+pub mod state;
 pub mod config;
