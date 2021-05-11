@@ -96,22 +96,22 @@ impl CpuState {
 		};
 
 		// Reset registers to their initial boot state
-		state.set_register(Register::F, 0xB0);
-		state.set_register(Register::BC, 0x0013);
-		state.set_register(Register::DE, 0x00D8);
-		state.set_register(Register::HL, 0x014D);
-		state.set_register(Register::SP, 0xFFFE);
-		state.set_register(Register::PC, 0x0100);
+		state.set(Register::F, 0xB0);
+		state.set(Register::BC, 0x0013);
+		state.set(Register::DE, 0x00D8);
+		state.set(Register::HL, 0x014D);
+		state.set(Register::SP, 0xFFFE);
+		state.set(Register::PC, 0x0100);
 
 		match cfg.model {
 			HardwareModel::GB | HardwareModel::SGB => {
-				state.set_register(Register::A, 0x01);
+				state.set(Register::A, 0x01);
 			},
 			HardwareModel::GBC => {
-				state.set_register(Register::A, 0x11);
+				state.set(Register::A, 0x11);
 			},
 			HardwareModel::GBP => {
-				state.set_register(Register::A, 0xFF);
+				state.set(Register::A, 0xFF);
 			},
 		}
 
@@ -120,10 +120,10 @@ impl CpuState {
 
 	/// Writes a value to a given register.
 	///
-	/// @param[in] reg - The register file identifier to write into.
-	/// @param[in] value - The value to write. In cases of 8-bit register,
+	/// * `reg` - The register file identifier to write into.
+	/// * `value` - The value to write. In cases of 8-bit register,
 	///     the higher 8 bits will be discarded.
-	pub fn set_register(&mut self, reg: Register, value: u16) {
+	pub fn set(&mut self, reg: Register, value: u16) {
 		let reg_type: RegisterType = get_type(&reg);
 		let reg: &mut u16 = &mut self.regs[get_index(&reg)];
 
@@ -135,7 +135,7 @@ impl CpuState {
 	}
 
 	/// Reads the given register.
-	pub fn get_register(&self, reg: Register) -> u16 {
+	pub fn get(&self, reg: Register) -> u16 {
 		let reg_value: u16 = self.regs[get_index(&reg)];
 		let reg_type: RegisterType = get_type(&reg);
 
@@ -149,7 +149,7 @@ impl CpuState {
 	/// Returns the state of the given cpu flag, as stored in
 	/// the 'F' register.
 	pub fn get_flag(&self, flag: Flag) -> bool {
-		let flags_value: u16 = self.get_register(Register::F);
+		let flags_value: u16 = self.get(Register::F);
 
 		// Check whether the relevant bit is on
 		((flags_value >> flag as u8) & 1) == 1
@@ -163,31 +163,31 @@ mod tests {
     #[test]
     fn test_registers_rw() {
     	let mut cpu: CpuState = CpuState::new(&Config::default());
-    	assert_eq!(0x0013, cpu.get_register(Register::BC));
+    	assert_eq!(0x0013, cpu.get(Register::BC));
 
-    	cpu.set_register(Register::AF, 0x1234);
-    	assert_eq!(0x12, cpu.get_register(Register::A));
-    	assert_eq!(0x34, cpu.get_register(Register::F));
+    	cpu.set(Register::AF, 0x1234);
+    	assert_eq!(0x12, cpu.get(Register::A));
+    	assert_eq!(0x34, cpu.get(Register::F));
 
-    	cpu.set_register(Register::B, 0x18);
-    	assert_eq!(0x18, cpu.get_register(Register::B));
+    	cpu.set(Register::B, 0x18);
+    	assert_eq!(0x18, cpu.get(Register::B));
 
-    	cpu.set_register(Register::SP, 0x7FFC);
-		assert_eq!(0x7FFC, cpu.get_register(Register::SP));
+    	cpu.set(Register::SP, 0x7FFC);
+		assert_eq!(0x7FFC, cpu.get(Register::SP));
     }
 
     #[test]
     fn test_cpu_flags() {
     	let mut cpu: CpuState = CpuState::new(&Config::default());
 
-    	cpu.set_register(Register::F, 0b10010000);
+    	cpu.set(Register::F, 0b10010000);
     	//                          ^ZNHC
     	assert_eq!(true, cpu.get_flag(Flag::Z) &&
     					!cpu.get_flag(Flag::N) &&
     					!cpu.get_flag(Flag::H) &&
     					 cpu.get_flag(Flag::C));
 
-    	cpu.set_register(Register::F, 0b01000000);
+    	cpu.set(Register::F, 0b01000000);
     	assert_eq!(true, !cpu.get_flag(Flag::Z) &&
     					  cpu.get_flag(Flag::N) &&
     					 !cpu.get_flag(Flag::H) &&

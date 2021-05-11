@@ -11,5 +11,26 @@
 extern crate std;
 
 pub mod bus;
+pub mod cpu;
 pub mod state;
 pub mod config;
+pub mod cartridge;
+
+use core::fmt;
+
+/// The library's exported errors.
+pub enum GameboyError {
+	/// Cartridge loading error.
+	Cartridge(&'static str),
+	/// IO related error.
+	Io(&'static str),
+}
+
+impl fmt::Display for GameboyError {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+            GameboyError::Cartridge(ref info) => write!(f, "Cartridge error: {}", info),
+            GameboyError::Io(ref info) => write!(f, "IO error: {}", info),
+        }
+	}
+}
