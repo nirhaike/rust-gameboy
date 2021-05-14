@@ -1,5 +1,5 @@
 [package]
-name = "rust-gameboy-core"
+name = "gameboy-core"
 description = "No-std GameBoy and GameBoy Color emulation library"
 version = "0.1.0"
 authors = ["Nir H."]
