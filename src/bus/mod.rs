@@ -4,31 +4,35 @@
 #![deny(missing_docs)]
 //! Emulate the gameboy's memory mapping and bus access.
 
-use crate::cartridge::*;
+#[macro_use]
+pub mod memory_range;
+pub mod cartridge;
+
+use cartridge::*;
+use memory_range::*;
 use crate::GameboyError;
 
 /// Bus locations-related constants.
 #[allow(missing_docs)]
 pub mod consts {
+	use super::*;
 
-	pub type MemoryRange = core::ops::RangeInclusive<u16>;
-
-	pub const MMAP_ROM_BANK0: MemoryRange = 0x0000..=0x3FFF;
+	pub const MMAP_ROM_BANK0: MemoryRange = make_range!(0x0000, 0x3FFF);
 	/// Switchable ROM bank.
-	pub const MMAP_ROM_BANK_SW: MemoryRange = 0x4000..=0x7FFF;
-	pub const MMAP_VIDEO_RAM: MemoryRange = 0x8000..=0x9FFF;
+	pub const MMAP_ROM_BANK_SW: MemoryRange = make_range!(0x4000, 0x7FFF);
+	pub const MMAP_VIDEO_RAM: MemoryRange = make_range!(0x8000, 0x9FFF);
 	/// Switchable RAM bank.
-	pub const MMAP_RAM_BANK_SW: MemoryRange = 0xA000..=0xBFFF;
-	pub const MMAP_RAM_INTERNAL: MemoryRange = 0xC000..=0xDFFF;
+	pub const MMAP_RAM_BANK_SW: MemoryRange = make_range!(0xA000, 0xBFFF);
+	pub const MMAP_RAM_INTERNAL: MemoryRange = make_range!(0xC000, 0xDFFF);
 	/// Maps to the same physical memory as the internal ram.
-	pub const MMAP_RAM_ECHO: MemoryRange = 0xE000..=0xFDFF;
+	pub const MMAP_RAM_ECHO: MemoryRange = make_range!(0xE000, 0xFDFF);
 	/// Sprite/Object attribute memory.
-	pub const MMAP_SPRITE_OAM: MemoryRange = 0xFE00..=0xFE9F;
-	pub const MMAP_IO_PORTS: MemoryRange = 0xFF00..=0xFF4B;
+	pub const MMAP_SPRITE_OAM: MemoryRange = make_range!(0xFE00, 0xFE9F);
+	pub const MMAP_IO_PORTS: MemoryRange = make_range!(0xFF00, 0xFF4B);
 	/// High RAM.
-	pub const MMAP_RAM_HIGH: MemoryRange = 0xFF80..=0xFFFE;
+	pub const MMAP_RAM_HIGH: MemoryRange = make_range!(0xFF80, 0xFFFE);
 	/// Interrupt enable register.
-	pub const MMAP_INTERRUPT_EN: MemoryRange = 0xFFFF..=0xFFFF;
+	pub const MMAP_INTERRUPT_EN: MemoryRange = make_range!(0xFFFF, 0xFFFF);
 }
 
 #[allow(unused_imports)]
@@ -57,22 +61,22 @@ macro_rules! get_region {
 		/// Returns the region that contains the given address.
 		fn $name(&$($mut_)* self, address: u16) -> Result<&$($mut_)* dyn Memory, GameboyError> {
 			match address {
-				_addr if MMAP_ROM_BANK0.contains(&_addr) => {
+				memory_range!(MMAP_ROM_BANK0) => {
 					Ok(&$($mut_)* self.cartridge)
 				}
 				// Switchable RAM bank
-				// _addr if MMAP_RAM_BANK_SW.contains(&_addr) => {
+				// memory_range!(MMAP_RAM_BANK_SW) => {
 
 				// }
 				// Internal RAM
-				// _addr if MMAP_RAM_INTERNAL.contains(&_addr) => {
+				// memory_range!(MMAP_RAM_INTERNAL) => {
 
 				// }
 				// Echo of internal RAM
-				// _addr if MMAP_RAM_ECHO.contains(&_addr) => {
+				// memory_range!(MMAP_RAM_ECHO) => {
 
 				// }
-				_ => { Err(GameboyError::Io("Accessed unmapped region.")) }
+				_ => { Err(GameboyError::Io("Accessed an unmapped region.")) }
 			}
 		}
 	}
@@ -111,14 +115,6 @@ impl<'a> Memory for SystemBus<'a> {
 	}
 }
 
-// pub struct Ram {
-
-// }
-
-// impl Memory for Ram {
-
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,12 +125,12 @@ mod tests {
     	let ram_ptr: u16 = 0xA100;
 
     	match int_enable_ptr {
-    		_x if MMAP_INTERRUPT_EN.contains(&_x) => { }
+    		memory_range!(MMAP_INTERRUPT_EN) => { }
     		_ => { assert!(false); }
     	}
 
     	match ram_ptr {
-    		_x if MMAP_RAM_BANK_SW.contains(&_x) => { }
+    		memory_range!(MMAP_RAM_BANK_SW) => { }
     		_ => { assert!(false); }
     	}
     }

@@ -181,7 +181,7 @@ mod tests {
     	let mut cpu: CpuState = CpuState::new(&Config::default());
 
     	cpu.set(Register::F, 0b10010000);
-    	//                          ^ZNHC
+    	//                    ^ZNHC
     	assert_eq!(true, cpu.get_flag(Flag::Z) &&
     					!cpu.get_flag(Flag::N) &&
     					!cpu.get_flag(Flag::H) &&
