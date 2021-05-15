@@ -35,15 +35,19 @@ pub mod consts {
 	pub const MMAP_INTERRUPT_EN: MemoryRange = make_range!(0xFFFF, 0xFFFF);
 }
 
-#[allow(unused_imports)]
 use consts::*;
 
-/// TODO decide on how to design this trait
+/// A peripheral that can be written and read by the cpu.
 pub trait Memory {
-	/// TODO
+	/// Write a 8-bit value to the peripheral.
+	///
+	/// * `address` - The absolute memory address to write into.
+	/// * `value` - The value to write.
 	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError>;
 
-	/// TODO
+	/// Read a 8-bit value from this peripheral.
+	///
+	/// * `address` - The absolute memory address to read from.
 	fn read(&self, address: u16) -> Result<u8, GameboyError>;
 }
 
@@ -97,7 +101,6 @@ impl<'a> SystemBus<'a> {
 
 impl<'a> Memory for SystemBus<'a> {
 	/// Handle reading from a memory region.
-	///
 	/// The function calls the relevent peripheral's implementation.
 	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
 		let peripheral = self.region_mut(address)?;
@@ -106,7 +109,6 @@ impl<'a> Memory for SystemBus<'a> {
 	}
 
 	/// Handle writing to a memory region.
-	///
 	/// The function calls the relevent peripheral's implementation.
 	fn read(&self, address: u16) -> Result<u8, GameboyError> {
 		let peripheral = self.region(address)?;

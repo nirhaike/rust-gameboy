@@ -31,6 +31,12 @@ pub mod consts {
 	/// 1A - ROM+MBC5+RAM, 1B - ROM+MBC5+RAM+Battery, 1C - ROM+MBC5+Rumble,
 	/// 1D - ROM+MBC5+Rumble+SRAM, 1E - ROM+MBC5+Rumble+SRAM+Battery
 	pub const ROM_CARTRIDGE_TYPE: usize = 0x0147;
+
+	/// A write to this range selects the memory model in MBC1 ROMs.
+	pub const MEMORY_MODEL_SELECT: MemoryRange = make_range!(0x6000, 0x7FFF);
+
+	/// A write to this range selects the active ROM bank in MBC ROMs.
+	pub const ROM_BANK_SELECT: MemoryRange = make_range!(0x2000, 0x3FFF);
 }
 
 use consts::*;
@@ -42,43 +48,64 @@ pub enum CartridgeType {
 	RomOnly,
 	/// Memory bank controller 1.
 	///
-	/// * `M` - Memory model select.
-	/// * `B` - Bank number (0 - 3).
-	MBC1(/* M */ bool, /* B */ u8),
+	/// # Parameters
+	/// * Memory model select.
+	/// *  Bank number (0 - 3).
+	MBC1(MemoryModel, u8),
 	/// Memory bank controller 2.
 	///
-	/// * `B` - Bank number (0 - 15).
-	MBC2(/* B */ u8),
+	/// # Parameters
+	/// * Bank number (0 - 15).
+	MBC2(u8),
 	/// Memory bank controller 3.
-	///
 	/// This controlller also contains an RTC (real-time clock).
 	///
-	/// * `B` - Bank number (0 - 127).
-	MBC3(/* B */ u8),
+	/// # Parameters
+	/// * Bank number (0 - 127).
+	MBC3(u8),
 	/// Memory bank controller 5.
-	///
 	/// This controller is guaranteed to run Gameboy Color games in double-speed mode.
 	///
-	/// * `B` - Bank number (0 - 127).
-	MBC5(/* B */ u8),
+	/// # Parameters
+	/// *  Bank number (0 - 127).
+	MBC5(u8),
+}
+
+/// Type-1 Memory bank controller has two models that determines the memory layout
+/// at runtime.
+#[derive(PartialEq)]
+pub enum MemoryModel {
+	/// 2MB ROM, 8KB RAM
+	MoreRom,
+	/// 0.5MB ROM, 32KB RAM
+	MoreRam,
+}
+
+/// Cartridges with memory bank controllers are capable of swapping memory banks
+/// by writing values to certain memory range within the cartridge.
+///
+/// This macro converts value written to the cartridge to the appropriate bank number.
+#[allow(unused_macros)]
+macro_rules! bank_number {
+	($value:tt, $num_bits:tt) => (value & ((1 << $num_bits) - 1))
 }
 
 /// The game's cartridge
 pub struct Cartridge<'a> {
-	data: &'a [u8],
+	data: &'a mut [u8],
 	state: CartridgeType,
 }
 
 impl<'a> Cartridge<'a> {
 	/// Initialize a new cartridge given its raw data.
-	pub fn new(data: &'a [u8]) -> Self {
+	pub fn new(data: &'a mut [u8]) -> Self {
 		// Make sure that the rom contains at least a single bank
 		assert!(data.len() >= 0x4000);
 
 		// Find out the type of the cartridge
 		let state = match data[ROM_CARTRIDGE_TYPE] {
 			0x00 | 0x08 | 0x09 => CartridgeType::RomOnly,
-			0x01 | 0x02 | 0x03 => CartridgeType::MBC1(false, 0),
+			0x01 | 0x02 | 0x03 => CartridgeType::MBC1(MemoryModel::MoreRom, 0),
 			0x05 | 0x06 => CartridgeType::MBC2(0),
 			0x12 | 0x13 => CartridgeType::MBC3(0),
 			0x19 | 0x1A | 0x1C | 0x1D | 0x1E => CartridgeType::MBC5(0),
@@ -92,14 +119,64 @@ impl<'a> Cartridge<'a> {
 	}
 
 	/// Get the title of the game.
-	pub fn title(&self) -> &'a[u8] {
+	pub fn title(&'a self) -> &'a[u8] {
 		&self.data[memory_offset_range!(ROM_GAME_TITLE)]
+	}
+
+	/// Set the current active rom bank of the cartridge.
+	/// The command to set the rom bank is given by writing to a corresponding
+	/// memory range.
+	pub fn set_bank(&mut self, address: u16, _value: u8) -> Result<(), GameboyError> {
+		// TODO implement this. The implementation should depend on the cartridge type.
+		match address {
+			memory_range!(ROM_BANK_SELECT) => { unimplemented!(); }
+			_ => { return Err(GameboyError::BadAddress(address)) }
+		}
 	}
 }
 
 impl<'a> Memory for Cartridge<'a> {
-	/// TODO implement this.
-	fn write(&mut self, _address: u16, _value: u8) -> Result<(), GameboyError> {
+	/// Write data into the cartridge
+	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
+		match self.state {
+			// No bank controller
+			CartridgeType::RomOnly => {
+				// Make sure that the address is within our ROM bounds.
+				if (address as usize) >= self.data.len() {
+					return Err(GameboyError::BadAddress(address));
+				}
+				self.data[address as usize] = value;
+			}
+			// Type-1 bank controller
+			CartridgeType::MBC1(ref mut model_select, _bank_num) => {
+				match address {
+					memory_range!(MEMORY_MODEL_SELECT) => {
+						// Change memory model
+						*model_select = match value & 1 {
+							0 => { MemoryModel::MoreRom }
+							_ => { MemoryModel::MoreRam }
+						};
+						return Ok(());
+					}
+					memory_range!(ROM_BANK_SELECT) => {
+						// Change ROM bank
+						self.set_bank(address, value)?;
+						return Ok(());
+					}
+					_ => {
+						// The layout depends on the memory model
+						match model_select {
+							// TODO implement this.
+							MemoryModel::MoreRom => { unimplemented!(); }
+							MemoryModel::MoreRam => { unimplemented!(); }
+						}
+					}
+				}
+			}
+			_ => {
+				return Err(GameboyError::NotImplemented);
+			}
+		}
 		Ok(())
 	}
 
@@ -128,8 +205,8 @@ mod tests {
 
     #[test]
     fn test_cartridge_loading() {
-    	let rom = empty();
-    	let cart = Cartridge::new(&rom);
+    	let mut rom = empty();
+    	let cart = Cartridge::new(&mut rom);
 
     	assert!(CartridgeType::RomOnly == cart.state);
     	assert!(TEST_GAME_TITLE == cart.title());

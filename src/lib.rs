@@ -19,17 +19,23 @@ use core::fmt;
 
 /// The library's exported errors.
 pub enum GameboyError {
+	/// Not implemented error.
+	NotImplemented,
 	/// Cartridge loading error.
 	Cartridge(&'static str),
-	/// IO related error.
+	/// Generic IO related error.
 	Io(&'static str),
+	/// Unexpected address error.
+	BadAddress(u16),
 }
 
 impl fmt::Display for GameboyError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
+			GameboyError::NotImplemented => write!(f, "Not implemented"),
             GameboyError::Cartridge(ref info) => write!(f, "Cartridge error: {}", info),
             GameboyError::Io(ref info) => write!(f, "IO error: {}", info),
+            GameboyError::BadAddress(address) => write!(f, "Bad address: {}", address),
         }
 	}
 }

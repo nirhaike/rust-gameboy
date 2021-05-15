@@ -84,38 +84,45 @@ mod registers {
 
 /// Structure holding the current processor state.
 #[derive(Clone)]
-pub struct CpuState {
-	regs: RegisterFile
+pub struct CpuState<'a> {
+	regs: RegisterFile,
+	config: &'a Config,
 }
 
-impl CpuState {
+impl<'a> CpuState<'a> {
 	/// Initializes a new cpu state
-	pub fn new(cfg: &Config) -> Self {
-		let mut state: CpuState = CpuState {
-			regs: [0; NUM_REGS]
+	pub fn new(config: &'a Config) -> Self {
+		let mut state: CpuState<'a> = CpuState {
+			regs: [0; NUM_REGS],
+			config
 		};
 
-		// Reset registers to their initial boot state
-		state.set(Register::F, 0xB0);
-		state.set(Register::BC, 0x0013);
-		state.set(Register::DE, 0x00D8);
-		state.set(Register::HL, 0x014D);
-		state.set(Register::SP, 0xFFFE);
-		state.set(Register::PC, 0x0100);
-
-		match cfg.model {
-			HardwareModel::GB | HardwareModel::SGB => {
-				state.set(Register::A, 0x01);
-			},
-			HardwareModel::GBC => {
-				state.set(Register::A, 0x11);
-			},
-			HardwareModel::GBP => {
-				state.set(Register::A, 0xFF);
-			},
-		}
+		// Reset the registers.
+		state.reset();
 
 		state
+	}
+
+	/// Reset registers to their initial boot state.
+	pub fn reset(&mut self) {
+		self.set(Register::F, 0xB0);
+		self.set(Register::BC, 0x0013);
+		self.set(Register::DE, 0x00D8);
+		self.set(Register::HL, 0x014D);
+		self.set(Register::SP, 0xFFFE);
+		self.set(Register::PC, 0x0100);
+
+		match self.config.model {
+			HardwareModel::GB | HardwareModel::SGB => {
+				self.set(Register::A, 0x01);
+			},
+			HardwareModel::GBC => {
+				self.set(Register::A, 0x11);
+			},
+			HardwareModel::GBP => {
+				self.set(Register::A, 0xFF);
+			},
+		}
 	}
 
 	/// Writes a value to a given register.
@@ -162,7 +169,9 @@ mod tests {
 
     #[test]
     fn test_registers_rw() {
-    	let mut cpu: CpuState = CpuState::new(&Config::default());
+    	let cfg: &Config = &Config::default();
+    	let mut cpu: CpuState = CpuState::new(&cfg);
+
     	assert_eq!(0x0013, cpu.get(Register::BC));
 
     	cpu.set(Register::AF, 0x1234);
@@ -178,7 +187,8 @@ mod tests {
 
     #[test]
     fn test_cpu_flags() {
-    	let mut cpu: CpuState = CpuState::new(&Config::default());
+    	let cfg: &Config = &Config::default();
+    	let mut cpu: CpuState = CpuState::new(&cfg);
 
     	cpu.set(Register::F, 0b10010000);
     	//                    ^ZNHC

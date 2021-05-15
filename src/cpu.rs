@@ -13,7 +13,7 @@ pub struct Cpu<'a> {
 	// Interrupts, system tick, cpu speed, serial ports and etc. should come here
 
 	/// The cpu's registers
-	pub state: CpuState,
+	pub state: CpuState<'a>,
 	/// The device's memory mapping
 	pub mmap: SystemBus<'a>,
 }
