@@ -9,6 +9,12 @@
 #[cfg(test)]
 #[macro_use]
 extern crate std;
+extern crate core;
+// The alloc crate is optional, and used for allocating the cartridge controller's
+// ram on the heap.
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 
 pub mod bus;
 pub mod cpu;
@@ -19,9 +25,9 @@ use core::fmt;
 
 /// The library's exported errors.
 pub enum GameboyError {
-	/// Not implemented error.
+	/// Unimplemented feature error.
 	NotImplemented,
-	/// Cartridge loading error.
+	/// Cartridge operation error.
 	Cartridge(&'static str),
 	/// Generic IO related error.
 	Io(&'static str),
@@ -37,5 +43,11 @@ impl fmt::Display for GameboyError {
             GameboyError::Io(ref info) => write!(f, "IO error: {}", info),
             GameboyError::BadAddress(address) => write!(f, "Bad address: {}", address),
         }
+	}
+}
+
+impl fmt::Debug for GameboyError {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		(self as &dyn fmt::Display).fmt(f)
 	}
 }
