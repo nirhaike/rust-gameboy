@@ -7,6 +7,7 @@
 #[macro_use]
 pub mod memory_range;
 pub mod cartridge;
+pub mod rtc;
 
 use cartridge::*;
 use memory_range::*;

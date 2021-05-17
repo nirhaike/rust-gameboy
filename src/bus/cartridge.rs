@@ -6,19 +6,19 @@
 //! handling IO from/to the game's cartridge.
 
 use crate::GameboyError;
+use super::rtc::*;
 use super::Memory;
 use super::memory_range::*;
 
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 
-
 /// cartridge addresses-related constants.
 #[allow(missing_docs)]
 pub mod consts {
 	use super::*;
 
-	/// Game title.
+	/// The game's title string.
 	pub const ROM_GAME_TITLE: MemoryRange = make_range!(0x0134, 0x0142);
 
 	/// Gameboy color indicator.
@@ -45,8 +45,18 @@ pub mod consts {
 	/// A write to this range selects the memory model in MBC1 ROMs.
 	pub const MEMORY_MODEL_SELECT: MemoryRange = make_range!(0x6000, 0x7FFF);
 
+	/// A write to this range enables/disables the external RAM (and
+	/// also the RTC's registers on MBC3 cartridges).
+	pub const RAM_ENABLE_SELECT: MemoryRange = make_range!(0x0000, 0x1FFF);
+
 	/// A write to this range selects the active ROM bank in MBC ROMs.
 	pub const ROM_BANK_SELECT: MemoryRange = make_range!(0x2000, 0x3FFF);
+
+	/// A write to this range selects the active RAM bank in MBC ROMs.
+	pub const RAM_BANK_SELECT: MemoryRange = make_range!(0x4000, 0x5FFF);
+
+	/// A write to this range fetches the current time into the RTC's registers.
+	pub const CLOCK_DATA_LATCH: MemoryRange = make_range!(0x6000, 0x7FFF);
 }
 
 use consts::*;
@@ -101,9 +111,11 @@ pub struct Cartridge<'a> {
 	rom: &'a mut [u8],
 	ram: &'a mut [u8],
 	cart_type: CartridgeType,
+	rtc: Rtc,
 	rom_bank: u8,
 	ram_bank: u8,
 	ram_enabled: bool,
+	rtc_mapped: bool,
 }
 
 impl<'a> Cartridge<'a> {
@@ -127,9 +139,11 @@ impl<'a> Cartridge<'a> {
 			rom,
 			ram,
 			cart_type,
+			rtc: Rtc::new(),
 			rom_bank: 0,
 			ram_bank: 0,
 			ram_enabled: false,
+			rtc_mapped: false,
 		};
 
 		Ok(cart)
@@ -150,6 +164,15 @@ impl<'a> Cartridge<'a> {
 			memory_range!(ROM_BANK_SELECT) => { unimplemented!(); }
 			_ => { return Err(GameboyError::BadAddress(address)) }
 		}
+	}
+
+	/// Set the current active ram bank of the cartridge.
+	///
+	/// The acctive ram bank is manipulated by programatically performing a write
+	/// to the `RAM_BANK_SELECT` memory range.
+	pub fn set_ram_bank(&mut self, _value: u8) -> Result<(), GameboyError> {
+		// TODO implement this.
+		unimplemented!();
 	}
 
 	/// Implementation of `write` for CartridgeType::RomOnly devices.
@@ -211,13 +234,39 @@ impl<'a> Cartridge<'a> {
 		// There are addresses that are preserved for operations such as
 		// changing ROM bank, etc.
 		match address {
+			memory_range!(RAM_ENABLE_SELECT) => {
+				// Writing bits 1 and 3 to this range enables the ram and rtc registers,
+				// otherwise they'll be disabled.
+				self.ram_enabled = (value & 0x0A) != 0;
+				return Ok(());
+			}
 			memory_range!(ROM_BANK_SELECT) => {
 				// Change active rom bank.
 				self.set_rom_bank(address, value)?;
 				return Ok(());
 			}
+			memory_range!(RAM_BANK_SELECT) => {
+				if RTC_CONTROL_RANGE.contains(&value) {
+					// Change active rtc register.
+					self.rtc.set_active_register(value)?;
+					self.rtc_mapped = true;
+				} else {
+					// Change active ram bank.
+					self.set_ram_bank(value)?;
+					self.rtc_mapped = false;
+				}
+				return Ok(());
+			}
+			memory_range!(CLOCK_DATA_LATCH) => {
+				// Update the clock's registers.
+				self.rtc.latch();
+				return Ok(());
+			}
 
-			_ => { unimplemented!(); }	
+			_ => {
+				// TODO implement reading rom & external ram.
+				unimplemented!();
+			}
 		}
 	}
 
@@ -259,8 +308,8 @@ impl<'a> Cartridge<'a> {
 	#[allow(dead_code)]
 	#[cfg(feature = "alloc")]
 	fn make_ram(rom: &'a [u8]) -> Result<Box<[u8]>, GameboyError> {
-		// We can't reuse the `ram_size` function as the array's size
-		// should be statically determined.
+		// We can't reuse the `ram_size` function as the array's size should be
+		// statically determined.
 		let ram: Box<[u8]> = match rom[ROM_SIZE] {
 			0x00 => Box::new([0_u8; 0]),
 			0x01 => Box::new([0_u8; 0x800]),
@@ -308,31 +357,33 @@ impl<'a> Memory for Cartridge<'a> {
 #[cfg(test)]
 #[allow(dead_code)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    const TEST_GAME_TITLE: &[u8] = b"TEST TITLE\0\0\0\0\0";
+	const TEST_GAME_TITLE: &[u8] = b"TEST TITLE\0\0\0\0\0";
 
-    /// Creates an empty rom for testing.
-    pub fn empty_rom() -> [u8; 0x8000] {
-    	let mut rom = [0_u8; 0x8000];
-    	// ROM-only cartridge.
-    	rom[ROM_CARTRIDGE_TYPE] = 0;
-    	// Write the game's title
-    	rom[memory_offset_range!(ROM_GAME_TITLE)].clone_from_slice(TEST_GAME_TITLE);
+	/// Creates an empty rom for testing.
+	pub fn empty_rom() -> [u8; 0x8000] {
+		let mut rom = [0_u8; 0x8000];
+		// ROM-only cartridge.
+		rom[ROM_CARTRIDGE_TYPE] = 0;
+		// Write the game's title
+		rom[memory_offset_range!(ROM_GAME_TITLE)].clone_from_slice(TEST_GAME_TITLE);
 
-    	rom
-    }
+		rom
+	}
 
-    #[test]
-    #[cfg(feature = "alloc")]
-    fn test_cartridge_loading() -> Result<(), GameboyError> {
-    	let mut rom = empty_rom();
-    	let mut ram: Box<[u8]> = Cartridge::make_ram(&rom)?;
+	#[test]
+	#[cfg(feature = "alloc")]
+	fn test_cartridge_loading() -> Result<(), GameboyError> {
+		let mut rom = empty_rom();
+		let mut ram: Box<[u8]> = Cartridge::make_ram(&rom)?;
 
-    	let cart = Cartridge::new(&mut rom, &mut ram)?;
-    	assert!(CartridgeType::RomOnly == cart.cart_type);
-    	assert!(TEST_GAME_TITLE == cart.title());
+		let cart = Cartridge::new(&mut rom, &mut ram)?;
 
-    	Ok(())
-    }
+		// Make sure that the cartridge's API works as expected.
+		assert!(CartridgeType::RomOnly == cart.cart_type);
+		assert!(TEST_GAME_TITLE == cart.title());
+
+		Ok(())
+	}
 }

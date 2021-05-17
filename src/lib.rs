@@ -33,6 +33,8 @@ pub enum GameboyError {
 	Io(&'static str),
 	/// Unexpected address error.
 	BadAddress(u16),
+	/// Invalid value written to a register.
+	BadValue(u8),
 }
 
 impl fmt::Display for GameboyError {
@@ -42,6 +44,7 @@ impl fmt::Display for GameboyError {
             GameboyError::Cartridge(ref info) => write!(f, "Cartridge error: {}", info),
             GameboyError::Io(ref info) => write!(f, "IO error: {}", info),
             GameboyError::BadAddress(address) => write!(f, "Bad address: {}", address),
+            GameboyError::BadValue(value) => write!(f, "Bad value: {}", value),
         }
 	}
 }
