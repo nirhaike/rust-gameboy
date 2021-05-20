@@ -66,20 +66,19 @@ macro_rules! get_region {
 		/// Returns the region that contains the given address.
 		fn $name(&$($mut_)* self, address: u16) -> Result<&$($mut_)* dyn Memory, GameboyError> {
 			match address {
-				memory_range!(MMAP_ROM_BANK0) => {
+				// Cartridge-mapped offsets
+				memory_range!(MMAP_ROM_BANK0) |
+				memory_range!(MMAP_ROM_BANK_SW) |
+				memory_range!(MMAP_RAM_BANK_SW) => {
 					Ok(&$($mut_)* self.cartridge)
 				}
-				// Switchable RAM bank
-				// memory_range!(MMAP_RAM_BANK_SW) => {
-
-				// }
 				// Internal RAM
 				// memory_range!(MMAP_RAM_INTERNAL) => {
 
 				// }
 				// Echo of internal RAM
 				// memory_range!(MMAP_RAM_ECHO) => {
-
+				//	// Same as internal ram but calculate the offset first
 				// }
 				_ => { Err(GameboyError::Io("Accessed an unmapped region.")) }
 			}

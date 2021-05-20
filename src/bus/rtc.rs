@@ -4,6 +4,7 @@
 #![deny(missing_docs)]
 //! Emulate the real time clock, that appears in type-3 MBCs.
 
+use super::Memory;
 use crate::GameboyError;
 use core::ops::RangeInclusive;
 
@@ -78,7 +79,10 @@ impl Rtc {
 	}
 
 	/// Fetch the clock data into the rtc's registers.
-	pub fn latch(&mut self) {
+	///
+	/// The latching process consists of writing 0x00 and then 0x01 to
+	/// the Latch Clock Data register.
+	pub fn latch(&mut self, _value: u8) {
 		unimplemented!();
 	}
 
@@ -91,5 +95,17 @@ impl Rtc {
 		}
 
 		Err(GameboyError::BadValue(value))
+	}
+}
+
+impl Memory for Rtc {
+	/// Writes to the rtc's currently active register.
+	fn write(&mut self, _address: u16, _value: u8) -> Result<(), GameboyError> {
+		unimplemented!();
+	}
+
+	/// Reads the rtc's currently active register.
+	fn read(&self, _address: u16) -> Result<u8, GameboyError> {
+		unimplemented!();
 	}
 }

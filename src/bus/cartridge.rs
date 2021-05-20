@@ -8,6 +8,7 @@
 use crate::GameboyError;
 use super::rtc::*;
 use super::Memory;
+use super::consts::*;
 use super::memory_range::*;
 
 #[cfg(feature = "alloc")]
@@ -20,13 +21,12 @@ pub mod consts {
 
 	/// The game's title string.
 	pub const ROM_GAME_TITLE: MemoryRange = make_range!(0x0134, 0x0142);
-
 	/// Gameboy color indicator.
 	/// 0x80 for GBC, otherwise not.
 	pub const ROM_GAMEBOY_COLOR: usize = 0x0143;
 	/// Gameboy Super indicator.
 	/// 0x03 for SGB, 0x00 for GB.
-	pub const ROM_GAMEBOY_SUPER: usize = 0x0143;
+	pub const ROM_GAMEBOY_SUPER: usize = 0x0146;
 	/// Cartridge type.
 	///
 	/// 0 - ROM Only, 1 - ROM+MBC1, 2 - ROM+MBC1+RAM, 3 - ROM+MBC1+RAM+Battery,
@@ -35,26 +35,25 @@ pub mod consts {
 	/// 1A - ROM+MBC5+RAM, 1B - ROM+MBC5+RAM+Battery, 1C - ROM+MBC5+Rumble,
 	/// 1D - ROM+MBC5+Rumble+SRAM, 1E - ROM+MBC5+Rumble+SRAM+Battery
 	pub const ROM_CARTRIDGE_TYPE: usize = 0x0147;
-
 	/// The number of ROM banks in the cartridge.
 	pub const ROM_SIZE: usize = 0x0148;
-
 	/// The number of RAM banks supported in the cartridge.
 	pub const RAM_SIZE: usize = 0x0149;
 
+	/// The size of each rom bank
+	pub const ROM_BANK_SIZE: usize = 0x4000;
+	/// The size of each ram bank
+	pub const RAM_BANK_SIZE: usize = 0x2000;
+
 	/// A write to this range selects the memory model in MBC1 ROMs.
 	pub const MEMORY_MODEL_SELECT: MemoryRange = make_range!(0x6000, 0x7FFF);
-
 	/// A write to this range enables/disables the external RAM (and
 	/// also the RTC's registers on MBC3 cartridges).
 	pub const RAM_ENABLE_SELECT: MemoryRange = make_range!(0x0000, 0x1FFF);
-
 	/// A write to this range selects the active ROM bank in MBC ROMs.
 	pub const ROM_BANK_SELECT: MemoryRange = make_range!(0x2000, 0x3FFF);
-
 	/// A write to this range selects the active RAM bank in MBC ROMs.
 	pub const RAM_BANK_SELECT: MemoryRange = make_range!(0x4000, 0x5FFF);
-
 	/// A write to this range fetches the current time into the RTC's registers.
 	pub const CLOCK_DATA_LATCH: MemoryRange = make_range!(0x6000, 0x7FFF);
 }
@@ -122,7 +121,7 @@ impl<'a> Cartridge<'a> {
 	/// Initialize a new cartridge given its raw data.
 	pub fn new(rom: &'a mut [u8], ram: &'a mut [u8]) -> Result<Self, GameboyError> {
 		// Make sure that the rom contains at least a single bank
-		assert!(rom.len() >= 0x4000);
+		assert!(rom.len() == Cartridge::rom_size(rom)?);
 		assert!(ram.len() == Cartridge::ram_size(rom)?);
 
 		// Find out the type of the cartridge
@@ -187,6 +186,19 @@ impl<'a> Cartridge<'a> {
 		self.rom[address as usize] = value;
 
 		Ok(())
+	}
+
+	/// Implementation of `read` for CartridgeType::RomOnly devices.
+	fn read_romonly(&self, address: u16) -> Result<u8, GameboyError> {
+		// The memory model here must be RomOnly.
+		assert!(CartridgeType::RomOnly == self.cart_type);
+
+		// Make sure that the address is within our ROM bounds.
+		if (address as usize) >= self.rom.len() {
+			return Err(GameboyError::BadAddress(address));
+		}
+
+		Ok(self.rom[address as usize])
 	}
 
 	/// Implementation of `write` for CartridgeType::MBC1 devices.
@@ -259,21 +271,88 @@ impl<'a> Cartridge<'a> {
 			}
 			memory_range!(CLOCK_DATA_LATCH) => {
 				// Update the clock's registers.
-				self.rtc.latch();
+				self.rtc.latch(value);
 				return Ok(());
 			}
+			memory_range!(MMAP_RAM_BANK_SW) => {
+				if !self.ram_enabled {
+					return Err(GameboyError::Io("Ram is not enabled for writing."));
+				}
 
-			_ => {
-				// TODO implement reading rom & external ram.
-				unimplemented!();
+				if self.rtc_mapped {
+					// Write to the rtc registers
+					self.rtc.write(address, value)?
+				} else {
+					// Write to the currently active ram bank
+					let mmap_offset: usize = (address as usize) - range_start!(MMAP_RAM_BANK_SW);
+					let ram_offset: usize = RAM_BANK_SIZE * (self.ram_bank as usize) - mmap_offset;
+
+					if self.ram.len() <= ram_offset {
+						return Err(GameboyError::Cartridge("write_mbc3: Invalid ram bank number."));
+					}
+
+					// Perform the actual write.
+					self.ram[ram_offset] = value;
+				}
+				return Ok(());
 			}
+			_ => Err(GameboyError::BadAddress(address))
+		}
+	}
+
+	/// Implementation of `read` for CartridgeType::MBC3 devices.
+	fn read_mbc3(&self, address: u16) -> Result<u8, GameboyError> {
+		// The memory model here must be MBC3.
+		assert!(CartridgeType::MBC3 == self.cart_type);
+
+		match address {
+			memory_range!(MMAP_ROM_BANK0) => {
+				// Get the data from the first rom bank.
+				Ok(self.rom[address as usize])
+			}
+			memory_range!(MMAP_ROM_BANK_SW) => {
+				// Get the data from the switchable rom bank.
+				let active_bank = if self.rom_bank == 0 { 1 } else { self.rom_bank } as usize;
+				let address = address as usize;
+				let bank_base: usize = active_bank * ROM_BANK_SIZE; 
+				let bank_offset: usize = address - range_start!(MMAP_ROM_BANK_SW);
+				let rom_offset = bank_base + bank_offset;
+
+				if self.rom.len() <= rom_offset {
+					return Err(GameboyError::Cartridge("read_mbc3: Invalid rom bank number."))
+				}
+
+				Ok(self.rom[rom_offset])
+			}
+			memory_range!(MMAP_RAM_BANK_SW) => {
+				// Make sure that we can currently read from this region.
+				if !self.ram_enabled {
+					return Err(GameboyError::Io("Ram is not enabled for reading."));
+				}
+
+				if self.rtc_mapped {
+					// Read from the rtc registers
+					Ok(self.rtc.read(address)?)
+				} else {
+					// Read from the currently active ram bank
+					let mmap_offset: usize = (address as usize) - range_start!(MMAP_RAM_BANK_SW);
+					let ram_offset: usize = RAM_BANK_SIZE * (self.ram_bank as usize) - mmap_offset;
+
+					if self.ram.len() <= ram_offset {
+						return Err(GameboyError::Cartridge("read_mbc3: Invalid ram bank number."));
+					}
+
+					Ok(self.ram[ram_offset])
+				}
+			}
+			_ => Err(GameboyError::BadAddress(address))
 		}
 	}
 
 	/// Get the number of ROM banks in the cartridge
 	#[allow(dead_code)]
-	fn num_rom_banks(&'a self) -> Result<u8, GameboyError> {
-		let num_banks: u8 = match self.rom[ROM_SIZE] {
+	fn num_rom_banks(rom: &'a [u8]) -> Result<u8, GameboyError> {
+		let num_banks: u8 = match rom[ROM_SIZE] {
 			0x00 => 2,  0x01 => 4,  0x02 => 8,   0x03 => 16,
 			0x04 => 32, 0x05 => 64, 0x06 => 128, 0x52 => 72,
 			0x53 => 80, 0x54 => 96,
@@ -286,9 +365,14 @@ impl<'a> Cartridge<'a> {
 		Ok(num_banks)
 	}
 
+	/// Get the ROM size in kilobytes as written in the given rom's configuration.
+	fn rom_size(rom: &'a [u8]) -> Result<usize, GameboyError> {
+		Ok(Cartridge::num_rom_banks(rom)? as usize * ROM_BANK_SIZE)
+	}
+
 	/// Get the supported RAM size in kilobytes given the relevant rom.
 	fn ram_size(rom: &'a [u8]) -> Result<usize, GameboyError> {
-		let num_banks: usize = match rom[ROM_SIZE] {
+		let num_banks: usize = match rom[RAM_SIZE] {
 			0x00 => 0,
 			0x01 => 0x800,
 			0x02 => 0x2000,
@@ -310,7 +394,7 @@ impl<'a> Cartridge<'a> {
 	fn make_ram(rom: &'a [u8]) -> Result<Box<[u8]>, GameboyError> {
 		// We can't reuse the `ram_size` function as the array's size should be
 		// statically determined.
-		let ram: Box<[u8]> = match rom[ROM_SIZE] {
+		let ram: Box<[u8]> = match rom[RAM_SIZE] {
 			0x00 => Box::new([0_u8; 0]),
 			0x01 => Box::new([0_u8; 0x800]),
 			0x02 => Box::new([0_u8; 0x2000]),
@@ -349,8 +433,21 @@ impl<'a> Memory for Cartridge<'a> {
 	}
 
 	/// Read data from the cartridge.
-	fn read(&self, _address: u16) -> Result<u8, GameboyError> {
-		unimplemented!();
+	fn read(&self, address: u16) -> Result<u8, GameboyError> {
+		match self.cart_type {
+			// No bank controller
+			CartridgeType::RomOnly => {
+				return self.read_romonly(address);
+			}
+			// Type-3 bank controller
+			CartridgeType::MBC3 => {
+				return self.read_mbc3(address);
+			}
+			_ => {
+				// These cartridge types are currently not implemented.
+				return Err(GameboyError::NotImplemented);
+			}
+		}
 	}
 }
 
@@ -359,30 +456,71 @@ impl<'a> Memory for Cartridge<'a> {
 mod tests {
 	use super::*;
 
-	const TEST_GAME_TITLE: &[u8] = b"TEST TITLE\0\0\0\0\0";
+	const TEST_CARTRIDGE_TITLE: &[u8] = b"TEST CARTRIDGE\0";
 
 	/// Creates an empty rom for testing.
-	pub fn empty_rom() -> [u8; 0x8000] {
+	pub fn empty_rom(cart_type: CartridgeType) -> [u8; 0x8000] {
 		let mut rom = [0_u8; 0x8000];
-		// ROM-only cartridge.
-		rom[ROM_CARTRIDGE_TYPE] = 0;
+
+		// Cartridge type-specific initialization.
+		match cart_type {
+			CartridgeType::RomOnly => {
+				// ROM-only cartridge.
+				rom[ROM_CARTRIDGE_TYPE] = 0x00;
+			}
+			CartridgeType::MBC3 => {
+				// Initialize a type-3 controller cartridge with 8KB ram (single bank).
+				rom[ROM_CARTRIDGE_TYPE] = 0x13;
+				rom[RAM_SIZE] = 0x02;
+			}
+			_ => { unimplemented!(); }
+		}
+
 		// Write the game's title
-		rom[memory_offset_range!(ROM_GAME_TITLE)].clone_from_slice(TEST_GAME_TITLE);
+		rom[memory_offset_range!(ROM_GAME_TITLE)].clone_from_slice(TEST_CARTRIDGE_TITLE);
 
 		rom
 	}
 
 	#[test]
 	#[cfg(feature = "alloc")]
-	fn test_cartridge_loading() -> Result<(), GameboyError> {
-		let mut rom = empty_rom();
+	fn test_cartridge_init() -> Result<(), GameboyError> {
+		let mut rom = empty_rom(CartridgeType::RomOnly);
 		let mut ram: Box<[u8]> = Cartridge::make_ram(&rom)?;
 
 		let cart = Cartridge::new(&mut rom, &mut ram)?;
 
 		// Make sure that the cartridge's API works as expected.
 		assert!(CartridgeType::RomOnly == cart.cart_type);
-		assert!(TEST_GAME_TITLE == cart.title());
+		assert!(TEST_CARTRIDGE_TITLE == cart.title());
+
+		Ok(())
+	}
+
+	#[test]
+	#[cfg(feature = "alloc")]
+	fn test_cartridge_rw() -> Result<(), GameboyError> {
+		let mut rom = empty_rom(CartridgeType::MBC3);
+		let mut ram: Box<[u8]> = Cartridge::make_ram(&rom)?;
+
+		let mut cart = Cartridge::new(&mut rom, &mut ram)?;
+
+		// Test rom reading.
+		// Read the beginning of the cartridge's name
+		let cart_name_start = range_start!(ROM_GAME_TITLE) as u16;
+		assert!(TEST_CARTRIDGE_TITLE[0] == cart.read(cart_name_start)?);
+
+		// Test ram accessing.
+		let ram_start = range_start!(MMAP_RAM_BANK_SW) as u16;
+		let ram_enable = range_start!(RAM_ENABLE_SELECT) as u16;
+
+		// This should fail because we didn't initialize the ram
+		assert!(cart.write(ram_start, 0x0).is_err());
+
+		// Initialize the ram for reading & writing.
+		cart.write(ram_enable, 0x0A)?;
+		cart.write(ram_start, 0x13)?;
+		assert!(0x13 == cart.read(ram_start)?);
 
 		Ok(())
 	}
