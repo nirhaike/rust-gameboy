@@ -157,7 +157,7 @@ impl<'a> Cartridge<'a> {
 	///
 	/// The command to set the rom bank is given by writing to a corresponding
 	/// memory range.
-	pub fn set_rom_bank(&mut self, address: u16, _value: u8) -> Result<(), GameboyError> {
+	fn set_rom_bank(&mut self, address: u16, _value: u8) -> Result<(), GameboyError> {
 		// TODO implement this. The implementation should depend on the cartridge type.
 		match address {
 			memory_range!(ROM_BANK_SELECT) => { unimplemented!(); }
@@ -169,7 +169,7 @@ impl<'a> Cartridge<'a> {
 	///
 	/// The acctive ram bank is manipulated by programatically performing a write
 	/// to the `RAM_BANK_SELECT` memory range.
-	pub fn set_ram_bank(&mut self, _value: u8) -> Result<(), GameboyError> {
+	fn set_ram_bank(&mut self, _value: u8) -> Result<(), GameboyError> {
 		// TODO implement this.
 		unimplemented!();
 	}
@@ -366,12 +366,12 @@ impl<'a> Cartridge<'a> {
 	}
 
 	/// Get the ROM size in kilobytes as written in the given rom's configuration.
-	fn rom_size(rom: &'a [u8]) -> Result<usize, GameboyError> {
+	pub fn rom_size(rom: &'a [u8]) -> Result<usize, GameboyError> {
 		Ok(Cartridge::num_rom_banks(rom)? as usize * ROM_BANK_SIZE)
 	}
 
 	/// Get the supported RAM size in kilobytes given the relevant rom.
-	fn ram_size(rom: &'a [u8]) -> Result<usize, GameboyError> {
+	pub fn ram_size(rom: &'a [u8]) -> Result<usize, GameboyError> {
 		let num_banks: usize = match rom[RAM_SIZE] {
 			0x00 => 0,
 			0x01 => 0x800,
@@ -389,9 +389,8 @@ impl<'a> Cartridge<'a> {
 
 	/// Create a ram buffer for the cartridge.
 	#[inline(always)]
-	#[allow(dead_code)]
 	#[cfg(feature = "alloc")]
-	fn make_ram(rom: &'a [u8]) -> Result<Box<[u8]>, GameboyError> {
+	pub fn make_ram(rom: &'a [u8]) -> Result<Box<[u8]>, GameboyError> {
 		// We can't reuse the `ram_size` function as the array's size should be
 		// statically determined.
 		let ram: Box<[u8]> = match rom[RAM_SIZE] {

@@ -57,7 +57,7 @@ pub trait Memory {
 /// This implementation provides memory/peripheral abstraction.
 pub struct SystemBus<'a> {
 	//ram: Ram,
-	cartridge: Cartridge<'a>,
+	cartridge: &'a mut Cartridge<'a>,
 }
 
 /// An abstraction for fetching mutable and immutable regions.
@@ -70,17 +70,20 @@ macro_rules! get_region {
 				memory_range!(MMAP_ROM_BANK0) |
 				memory_range!(MMAP_ROM_BANK_SW) |
 				memory_range!(MMAP_RAM_BANK_SW) => {
-					Ok(&$($mut_)* self.cartridge)
+					Ok(&$($mut_)* (*self.cartridge))
 				}
 				// Internal RAM
-				// memory_range!(MMAP_RAM_INTERNAL) => {
-
-				// }
+				memory_range!(MMAP_RAM_INTERNAL) => {
+					unimplemented!();
+				}
 				// Echo of internal RAM
-				// memory_range!(MMAP_RAM_ECHO) => {
-				//	// Same as internal ram but calculate the offset first
-				// }
-				_ => { Err(GameboyError::Io("Accessed an unmapped region.")) }
+				memory_range!(MMAP_RAM_ECHO) => {
+					// TODO same as internal ram but calculate the offset first
+					unimplemented!();
+				}
+				_ => {
+					Err(GameboyError::Io("Accessed an unmapped region."))
+				}
 			}
 		}
 	}
@@ -88,7 +91,7 @@ macro_rules! get_region {
 
 impl<'a> SystemBus<'a> {
 	/// Initialize a new address space.
-	pub fn new(cartridge: Cartridge<'a>) -> Self {
+	pub fn new(cartridge: &'a mut Cartridge<'a>) -> Self {
 		SystemBus { cartridge }
 	}
 

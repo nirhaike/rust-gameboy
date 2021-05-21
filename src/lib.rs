@@ -15,11 +15,10 @@ extern crate core;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-
 pub mod bus;
 pub mod cpu;
-pub mod state;
 pub mod config;
+pub mod emulator;
 
 use core::fmt;
 
