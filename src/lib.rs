@@ -18,7 +18,6 @@ extern crate alloc;
 pub mod bus;
 pub mod cpu;
 pub mod config;
-pub mod emulator;
 
 use core::fmt;
 
@@ -32,6 +31,8 @@ pub enum GameboyError {
 	Io(&'static str),
 	/// Unexpected address error.
 	BadAddress(u16),
+	/// Invalid opcode error.
+	BadOpcode(u8),
 	/// Invalid value written to a register.
 	BadValue(u8),
 }
@@ -43,6 +44,7 @@ impl fmt::Display for GameboyError {
             GameboyError::Cartridge(ref info) => write!(f, "Cartridge error: {}", info),
             GameboyError::Io(ref info) => write!(f, "IO error: {}", info),
             GameboyError::BadAddress(address) => write!(f, "Bad address: {}", address),
+            GameboyError::BadOpcode(value) => write!(f, "Bad opcode: {}", value),
             GameboyError::BadValue(value) => write!(f, "Bad value: {}", value),
         }
 	}

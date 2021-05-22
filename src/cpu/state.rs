@@ -6,13 +6,15 @@
 use crate::config::{Config, HardwareModel};
 use registers::*;
 
-mod registers {
+#[allow(missing_docs)]
+pub mod registers {
 	/// The size of the register file
 	pub const NUM_REGS: usize = 6;
 
 	/// We have 6 registers and they're 16-bit wide.
 	pub type RegisterFile = [u16; NUM_REGS];
 
+	#[derive(PartialEq, Clone, Copy)]
 	pub enum Register {
 		/// Accumulator and Flag registers
 		A, F, AF,
@@ -28,6 +30,7 @@ mod registers {
 
 	/// The register's "type" is essentially the internal representation
 	/// of the virtual register's bitmask within the register file.
+	#[derive(PartialEq)]
 	pub enum RegisterType {
 		Wide,
 		Low8,
