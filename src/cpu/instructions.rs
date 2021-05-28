@@ -50,8 +50,8 @@ mod util {
 	/// Reads the memory at address HL and stores the value to the
 	/// given register.
 	pub fn load_mem_to_register(cpu: &mut Cpu,
-						  reg: Register,
-						  mem: Register) -> InsnResult {
+								reg: Register,
+								mem: Register) -> InsnResult {
 		assert!(get_type(&mem) == RegisterType::Wide);
 		assert!(get_type(&reg) != RegisterType::Wide);
 
@@ -65,8 +65,8 @@ mod util {
 	/// Writes the given register's value to the memory at the address
 	/// represented by the given 16-bit `mem` register (eg. HL).
 	pub fn store_register_into_mem(cpu: &mut Cpu,
-						  mem: Register,
-						  reg: Register) -> InsnResult {
+								   mem: Register,
+								   reg: Register) -> InsnResult {
 		assert!(get_type(&mem) == RegisterType::Wide);
 		assert!(get_type(&reg) != RegisterType::Wide);
 
@@ -81,9 +81,19 @@ mod util {
 
 use util::*;
 
+/// ld (BC), A
+pub fn opcode_02(cpu: &mut Cpu) -> InsnResult {
+	store_register_into_mem(cpu, Register::BC, Register::A)
+}
+
 /// ld B, n
 pub fn opcode_06(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::B)
+}
+
+/// ld A, (BC)
+pub fn opcode_0a(cpu: &mut Cpu) -> InsnResult {
+	load_mem_to_register(cpu, Register::A, Register::BC)
 }
 
 /// ld C, n
@@ -91,9 +101,19 @@ pub fn opcode_0e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::C)
 }
 
+/// ld (DE), A
+pub fn opcode_12(cpu: &mut Cpu) -> InsnResult {
+	store_register_into_mem(cpu, Register::DE, Register::A)
+}
+
 /// ld D, n
 pub fn opcode_16(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::D)
+}
+
+/// ld A, (DE)
+pub fn opcode_1a(cpu: &mut Cpu) -> InsnResult {
+	load_mem_to_register(cpu, Register::A, Register::DE)
 }
 
 /// ld E, n
@@ -119,6 +139,14 @@ pub fn opcode_36(cpu: &mut Cpu) -> InsnResult {
 	cpu.mmap.write(address, value)?;
 
 	Ok(12)
+}
+
+/// ld A, #
+pub fn opcode_3e(cpu: &mut Cpu) -> InsnResult {
+	let value: u8 = cpu.fetch()?;
+	cpu.registers.set(Register::A, value as u16);
+
+	Ok(8)
 }
 
 /// ld B, B
@@ -156,6 +184,11 @@ pub fn opcode_46(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::B, Register::HL)
 }
 
+/// ld B, A
+pub fn opcode_47(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::B, Register::A)
+}
+
 /// ld C, B
 pub fn opcode_48(cpu: &mut Cpu) -> InsnResult {
 	move_registers(cpu, Register::C, Register::B)
@@ -189,6 +222,11 @@ pub fn opcode_4d(cpu: &mut Cpu) -> InsnResult {
 /// ld C, (HL)
 pub fn opcode_4e(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::C, Register::HL)
+}
+
+/// ld C, A
+pub fn opcode_4f(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::C, Register::A)
 }
 
 /// ld D, B
@@ -226,6 +264,11 @@ pub fn opcode_56(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::D, Register::HL)
 }
 
+/// ld D, A
+pub fn opcode_57(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::D, Register::A)
+}
+
 /// ld E, B
 pub fn opcode_58(cpu: &mut Cpu) -> InsnResult {
 	move_registers(cpu, Register::E, Register::B)
@@ -259,6 +302,11 @@ pub fn opcode_5d(cpu: &mut Cpu) -> InsnResult {
 /// ld E, (HL)
 pub fn opcode_5e(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::E, Register::HL)
+}
+
+/// ld E, A
+pub fn opcode_5f(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::E, Register::A)
 }
 
 /// ld H, B
@@ -296,6 +344,11 @@ pub fn opcode_66(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::H, Register::HL)
 }
 
+/// ld H, A
+pub fn opcode_67(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::H, Register::A)
+}
+
 /// ld L, B
 pub fn opcode_68(cpu: &mut Cpu) -> InsnResult {
 	move_registers(cpu, Register::L, Register::B)
@@ -331,6 +384,11 @@ pub fn opcode_6e(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::L, Register::HL)
 }
 
+/// ld L, A
+pub fn opcode_6f(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::L, Register::A)
+}
+
 /// ld (HL), B
 pub fn opcode_70(cpu: &mut Cpu) -> InsnResult {
 	store_register_into_mem(cpu, Register::HL, Register::B)
@@ -359,6 +417,11 @@ pub fn opcode_74(cpu: &mut Cpu) -> InsnResult {
 /// ld (HL), L
 pub fn opcode_75(cpu: &mut Cpu) -> InsnResult {
 	store_register_into_mem(cpu, Register::HL, Register::L)
+}
+
+/// ld (HL), A
+pub fn opcode_77(cpu: &mut Cpu) -> InsnResult {
+	store_register_into_mem(cpu, Register::HL, Register::A)
 }
 
 /// ld A, B
@@ -399,4 +462,44 @@ pub fn opcode_7e(cpu: &mut Cpu) -> InsnResult {
 /// ld A, A
 pub fn opcode_7f(cpu: &mut Cpu) -> InsnResult {
 	move_registers(cpu, Register::A, Register::A)
+}
+
+/// ld (C), A
+pub fn opcode_e2(cpu: &mut Cpu) -> InsnResult {
+	let address: u16 = 0xFF00 | cpu.registers.get(Register::C);
+	let value: u8 = cpu.registers.get(Register::A) as u8;
+
+	cpu.mmap.write(address, value)?;
+
+	Ok(8)
+}
+
+/// ld (nn), A
+pub fn opcode_ea(cpu: &mut Cpu) -> InsnResult {
+	let address: u16 = cpu.fetch::<u16>()?;
+	let value: u8 = cpu.registers.get(Register::A) as u8;
+
+	cpu.mmap.write(address, value)?;
+
+	Ok(16)
+}
+
+/// ld A, (C)
+pub fn opcode_f2(cpu: &mut Cpu) -> InsnResult {
+	let address: u16 = 0xFF00 | cpu.registers.get(Register::C);
+	let value: u8 = cpu.mmap.read(address)?;
+
+	cpu.registers.set(Register::A, value as u16);
+
+	Ok(8)
+}
+
+/// ld A, (nn)
+pub fn opcode_fa(cpu: &mut Cpu) -> InsnResult {
+	let address: u16 = cpu.fetch::<u16>()?;
+	let value: u8 = cpu.mmap.read(address)?;
+
+	cpu.registers.set(Register::A, value as u16);
+
+	Ok(16)
 }

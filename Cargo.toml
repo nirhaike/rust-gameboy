@@ -13,4 +13,4 @@ std = []
 alloc = []
 
 [dependencies]
-
+num = "0.4"

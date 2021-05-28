@@ -153,6 +153,11 @@ impl<'a> Cartridge<'a> {
 		&self.rom[memory_offset_range!(ROM_GAME_TITLE)]
 	}
 
+	/// Selects whether the ram is enabled for writing.
+	pub fn set_ram_enabled(&mut self, enable: bool) {
+		self.ram_enabled = enable;
+	}
+
 	/// Set the current active rom bank of the cartridge.
 	///
 	/// The command to set the rom bank is given by writing to a corresponding
@@ -285,7 +290,7 @@ impl<'a> Cartridge<'a> {
 				} else {
 					// Write to the currently active ram bank
 					let mmap_offset: usize = (address as usize) - range_start!(MMAP_RAM_BANK_SW);
-					let ram_offset: usize = RAM_BANK_SIZE * (self.ram_bank as usize) - mmap_offset;
+					let ram_offset: usize = RAM_BANK_SIZE * (self.ram_bank as usize) + mmap_offset;
 
 					if self.ram.len() <= ram_offset {
 						return Err(GameboyError::Cartridge("write_mbc3: Invalid ram bank number."));
@@ -336,7 +341,7 @@ impl<'a> Cartridge<'a> {
 				} else {
 					// Read from the currently active ram bank
 					let mmap_offset: usize = (address as usize) - range_start!(MMAP_RAM_BANK_SW);
-					let ram_offset: usize = RAM_BANK_SIZE * (self.ram_bank as usize) - mmap_offset;
+					let ram_offset: usize = RAM_BANK_SIZE * (self.ram_bank as usize) + mmap_offset;
 
 					if self.ram.len() <= ram_offset {
 						return Err(GameboyError::Cartridge("read_mbc3: Invalid ram bank number."));
@@ -452,7 +457,7 @@ impl<'a> Memory for Cartridge<'a> {
 
 #[cfg(test)]
 #[allow(dead_code)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	const TEST_CARTRIDGE_TITLE: &[u8] = b"TEST CARTRIDGE\0";

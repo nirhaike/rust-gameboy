@@ -57,7 +57,7 @@ pub trait Memory {
 /// This implementation provides memory/peripheral abstraction.
 pub struct SystemBus<'a> {
 	//ram: Ram,
-	cartridge: &'a mut Cartridge<'a>,
+	pub(crate) cartridge: &'a mut Cartridge<'a>,
 }
 
 /// An abstraction for fetching mutable and immutable regions.
@@ -117,6 +117,18 @@ impl<'a> Memory for SystemBus<'a> {
 		let peripheral = self.region(address)?;
 		
 		peripheral.read(address)
+	}
+}
+
+#[cfg(test)]
+impl<'a> SystemBus<'a> {
+	/// Writes the complete array's bytes to the relevant memory region.
+	pub fn write_all(&mut self, address: u16, array: &[u8]) -> Result<(), GameboyError> {
+		for (index, value) in array.iter().enumerate() {
+			self.write(address + (index as u16), *value)?;
+		}
+
+		Ok(())
 	}
 }
 

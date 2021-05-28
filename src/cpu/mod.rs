@@ -8,6 +8,10 @@ pub mod state;
 pub mod decode;
 pub mod instructions;
 
+use num::PrimInt;
+use core::mem::size_of;
+use core::ops::{AddAssign, Shl};
+
 use state::*;
 use state::registers::*;
 use instructions::Instruction;
@@ -43,14 +47,26 @@ impl<'a> Cpu<'a> {
 		}
 	}
 
-	/// Reads the next instruction byte and increments the program counter.
-	pub fn fetch(&mut self) -> Result<u8, GameboyError> {
-		let pc: u16 = self.registers.get(Register::PC);
-		let insn_byte: u8 = self.mmap.read(pc)?;
+	/// Reads the next instruction bytes and increments the program counter appropriately.
+	///
+	/// The function works in little-endian, that is, when reading 2 bytes,
+	/// the first byte will be the least-significant one.
+	pub fn fetch<T: PrimInt + AddAssign + Shl<Output=T>>(&mut self) -> Result<T, GameboyError> {
+		let mut result: T = num::cast(0).unwrap();
 
-		self.registers.set(Register::PC, pc + 1);
+		for i in 0..size_of::<T>() {
+			// Read the next byte.
+			let pc: u16 = self.registers.get(Register::PC);
+			let data: T = num::cast::<u8, T>(self.mmap.read(pc)?).unwrap();
 
-		Ok(insn_byte)
+			// We're using little-endianity.
+			result += data << num::cast::<usize, T>(8 * i).unwrap();
+
+			// Move the PC forward.
+			self.registers.set(Register::PC, pc + 1);
+		}
+
+		Ok(result)
 	}
 
 	/// Emulates the execution of a single instruction.
@@ -71,5 +87,37 @@ impl<'a> Cpu<'a> {
 		let num_cycles = insn(self)?;
 
 		Ok(num_cycles)
+	}
+}
+
+#[cfg(test)]
+#[cfg(feature = "alloc")]
+mod tests {
+	use super::*;
+	use alloc::boxed::Box;
+
+	#[test]
+	fn test_fetch() -> Result<(), GameboyError> {
+		// Initialize the cpu
+		let config = Config::default();
+		let mut rom = cartridge::tests::empty_rom(CartridgeType::MBC3);
+		let mut ram: Box<[u8]> = Cartridge::make_ram(&rom)?;
+		let mut cartridge = Cartridge::new(&mut rom, &mut ram)?;
+
+		let mut cpu = Cpu::new(&config, &mut cartridge);
+
+		// Move the program counter to the RAM bank.
+		cpu.registers.set(Register::PC, 0xA000);
+
+		// Write arbitrary data to the memory starting from the program counter.
+		let data: &[u8] = &[1, 2, 3];
+		cpu.mmap.cartridge.set_ram_enabled(true);
+		cpu.mmap.write_all(cpu.registers.get(Register::PC), data)?;
+
+		// Make sure that fetch works as expected.
+		assert!(cpu.fetch::<u16>()? == 0x0201);
+		assert!(cpu.fetch::<u8>()? == 0x03);
+
+		Ok(())
 	}
 }
