@@ -164,46 +164,68 @@ impl<'a> CpuState<'a> {
 		// Check whether the relevant bit is on
 		((flags_value >> flag as u8) & 1) == 1
 	}
+
+	/// Returns the state of the given cpu flag, as stored in
+	/// the 'F' register.
+	pub fn set_flag(&mut self, flag: Flag, value: bool) {
+		let old_flags: u16 = self.get(Register::F);
+
+		let new_flags = if value {
+			// Turn on the relevant bit
+			old_flags | (1 << (flag as u8))
+		} else {
+			// Turn off the relevant bit
+			old_flags & !(1 << (flag as u8))
+		};
+
+		self.set(Register::F, new_flags);
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_registers_rw() {
-    	let cfg: &Config = &Config::default();
-    	let mut cpu: CpuState = CpuState::new(&cfg);
+	#[test]
+	fn test_registers_rw() {
+		let cfg: &Config = &Config::default();
+		let mut cpu: CpuState = CpuState::new(&cfg);
 
-    	assert_eq!(0x0013, cpu.get(Register::BC));
+		assert_eq!(0x0013, cpu.get(Register::BC));
 
-    	cpu.set(Register::AF, 0x1234);
-    	assert_eq!(0x12, cpu.get(Register::A));
-    	assert_eq!(0x34, cpu.get(Register::F));
+		cpu.set(Register::AF, 0x1234);
+		assert_eq!(0x12, cpu.get(Register::A));
+		assert_eq!(0x34, cpu.get(Register::F));
 
-    	cpu.set(Register::B, 0x18);
-    	assert_eq!(0x18, cpu.get(Register::B));
+		cpu.set(Register::B, 0x18);
+		assert_eq!(0x18, cpu.get(Register::B));
 
-    	cpu.set(Register::SP, 0x7FFC);
+		cpu.set(Register::SP, 0x7FFC);
 		assert_eq!(0x7FFC, cpu.get(Register::SP));
-    }
+	}
 
-    #[test]
-    fn test_cpu_flags() {
-    	let cfg: &Config = &Config::default();
-    	let mut cpu: CpuState = CpuState::new(&cfg);
+	#[test]
+	fn test_cpu_flags() {
+		let cfg: &Config = &Config::default();
+		let mut cpu: CpuState = CpuState::new(&cfg);
 
-    	cpu.set(Register::F, 0b10010000);
-    	//                    ^ZNHC
-    	assert_eq!(true, cpu.get_flag(Flag::Z) &&
-    					!cpu.get_flag(Flag::N) &&
-    					!cpu.get_flag(Flag::H) &&
-    					 cpu.get_flag(Flag::C));
+		cpu.set(Register::F, 0b10010000);
+		//                    ^ZNHC
+		assert_eq!(true, cpu.get_flag(Flag::Z) &&
+						!cpu.get_flag(Flag::N) &&
+						!cpu.get_flag(Flag::H) &&
+						 cpu.get_flag(Flag::C));
 
-    	cpu.set(Register::F, 0b01000000);
-    	assert_eq!(true, !cpu.get_flag(Flag::Z) &&
-    					  cpu.get_flag(Flag::N) &&
-    					 !cpu.get_flag(Flag::H) &&
-    					 !cpu.get_flag(Flag::C));
-    }
+		cpu.set(Register::F, 0b01000000);
+		assert_eq!(true, !cpu.get_flag(Flag::Z) &&
+						  cpu.get_flag(Flag::N) &&
+						 !cpu.get_flag(Flag::H) &&
+						 !cpu.get_flag(Flag::C));
+
+		cpu.set_flag(Flag::N, false);
+		assert_eq!(false, cpu.get_flag(Flag::N));
+
+		cpu.set_flag(Flag::C, true);
+		assert_eq!(true, cpu.get_flag(Flag::C));
+	}
 }

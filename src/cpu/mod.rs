@@ -4,6 +4,7 @@
 #![deny(missing_docs)]
 //! Gameboy's processor emulation.
 
+pub mod alu;
 pub mod state;
 pub mod decode;
 pub mod instructions;

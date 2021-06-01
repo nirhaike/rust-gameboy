@@ -23,10 +23,25 @@ mod util {
 	/// Loads an 8-bit value into the given register.
 	pub fn load_imm8_to_register(cpu: &mut Cpu,
 								 reg: Register) -> InsnResult {
+
+		assert!(get_type(&reg) != RegisterType::Wide);
+
 		let value: u8 = cpu.fetch()?;
 		cpu.registers.set(reg, value as u16);
 
 		Ok(8)
+	}
+
+	/// Loads a 16-bit value into the given register.
+	pub fn load_imm16_to_register(cpu: &mut Cpu,
+								  reg: Register) -> InsnResult {
+
+		assert!(get_type(&reg) == RegisterType::Wide);
+
+		let value: u16 = cpu.fetch()?;
+		cpu.registers.set(reg, value);
+
+		Ok(12)
 	}
 
 	/// Moves the source register to the destination.
@@ -77,9 +92,54 @@ mod util {
 
 		Ok(8)
 	}
+
+	/// Places a 16-bit register on the stack.
+	pub fn push_nn(cpu: &mut Cpu,
+				   reg: Register) -> InsnResult {
+
+		assert!(get_type(&reg) == RegisterType::Wide);
+
+		let mut address: u16 = cpu.registers.get(Register::SP);
+		let value: u16 = cpu.registers.get(reg);
+
+		// Decrement the stack pointer.
+		cpu.registers.set(Register::SP, address - 2);
+
+		address -= 1;
+		cpu.mmap.write(address, ((value >> 8) & 0xFF) as u8)?;
+
+		address -= 1;
+		cpu.mmap.write(address, (value & 0xFF) as u8)?;
+
+		Ok(16)
+	}
+
+	/// Pops a 16-bit register from the stack.
+	pub fn pop_nn(cpu: &mut Cpu,
+				   reg: Register) -> InsnResult {
+
+		assert!(get_type(&reg) == RegisterType::Wide);
+
+		let address: u16 = cpu.registers.get(Register::SP);
+
+		let high = cpu.mmap.read(address)? as u16;
+		let low = cpu.mmap.read(address + 1)? as u16;
+
+		cpu.registers.set(reg, (high << 8) + low);
+
+		// Increment the stack pointer.
+		cpu.registers.set(Register::SP, address + 2);
+
+		Ok(12)
+	}
 }
 
 use util::*;
+
+/// ld BC, nn
+pub fn opcode_01(cpu: &mut Cpu) -> InsnResult {
+	load_imm16_to_register(cpu, Register::BC)
+}
 
 /// ld (BC), A
 pub fn opcode_02(cpu: &mut Cpu) -> InsnResult {
@@ -91,6 +151,17 @@ pub fn opcode_06(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::B)
 }
 
+/// ld (nn), SP
+pub fn opcode_08(cpu: &mut Cpu) -> InsnResult {
+	let address: u16 = cpu.fetch()?;
+	let value = cpu.registers.get(Register::SP);
+
+	cpu.mmap.write(address, (value & 0xFF) as u8)?;
+	cpu.mmap.write(address + 1, ((value >> 8) & 0xFF) as u8)?;
+
+	Ok(20)
+}
+
 /// ld A, (BC)
 pub fn opcode_0a(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::A, Register::BC)
@@ -99,6 +170,11 @@ pub fn opcode_0a(cpu: &mut Cpu) -> InsnResult {
 /// ld C, n
 pub fn opcode_0e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::C)
+}
+
+/// ld DE, nn
+pub fn opcode_11(cpu: &mut Cpu) -> InsnResult {
+	load_imm16_to_register(cpu, Register::DE)
 }
 
 /// ld (DE), A
@@ -121,14 +197,58 @@ pub fn opcode_1e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::E)
 }
 
+/// ld HL, nn
+pub fn opcode_21(cpu: &mut Cpu) -> InsnResult {
+	load_imm16_to_register(cpu, Register::HL)
+}
+
+/// ld (HL+), A
+pub fn opcode_22(cpu: &mut Cpu) -> InsnResult {
+	let address = cpu.registers.get(Register::HL);
+	let value: u8 = cpu.registers.get(Register::A) as u8;
+
+	cpu.mmap.write(address, value)?;
+
+	cpu.registers.set(Register::HL, address + 1);
+
+	Ok(8)
+}
+
 /// ld H, n
 pub fn opcode_26(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::H)
 }
 
+/// ld A, (HL+)
+pub fn opcode_2a(cpu: &mut Cpu) -> InsnResult {
+	let address = cpu.registers.get(Register::HL);
+	let value: u8 = cpu.mmap.read(address)?;
+	cpu.registers.set(Register::A, value as u16);
+	cpu.registers.set(Register::HL, address + 1);
+
+	Ok(8)
+}
+
 /// ld L, n
 pub fn opcode_2e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::L)
+}
+
+/// ld SP, nn
+pub fn opcode_31(cpu: &mut Cpu) -> InsnResult {
+	load_imm16_to_register(cpu, Register::SP)
+}
+
+/// ld (HL-), A
+pub fn opcode_32(cpu: &mut Cpu) -> InsnResult {
+	let address = cpu.registers.get(Register::HL);
+	let value: u8 = cpu.registers.get(Register::A) as u8;
+
+	cpu.mmap.write(address, value)?;
+
+	cpu.registers.set(Register::HL, address - 1);
+
+	Ok(8)
 }
 
 /// ld (HL), n
@@ -139,6 +259,16 @@ pub fn opcode_36(cpu: &mut Cpu) -> InsnResult {
 	cpu.mmap.write(address, value)?;
 
 	Ok(12)
+}
+
+/// ld A, (HL-)
+pub fn opcode_3a(cpu: &mut Cpu) -> InsnResult {
+	let address = cpu.registers.get(Register::HL);
+	let value: u8 = cpu.mmap.read(address)?;
+	cpu.registers.set(Register::A, value as u16);
+	cpu.registers.set(Register::HL, address - 1);
+
+	Ok(8)
 }
 
 /// ld A, #
@@ -464,6 +594,42 @@ pub fn opcode_7f(cpu: &mut Cpu) -> InsnResult {
 	move_registers(cpu, Register::A, Register::A)
 }
 
+/// pop BC
+pub fn opcode_c1(cpu: &mut Cpu) -> InsnResult {
+	pop_nn(cpu, Register::BC)
+}
+
+/// push BC
+pub fn opcode_c5(cpu: &mut Cpu) -> InsnResult {
+	push_nn(cpu, Register::BC)
+}
+
+/// pop DE
+pub fn opcode_d1(cpu: &mut Cpu) -> InsnResult {
+	pop_nn(cpu, Register::DE)
+}
+
+/// push DE
+pub fn opcode_d5(cpu: &mut Cpu) -> InsnResult {
+	push_nn(cpu, Register::DE)
+}
+
+/// ld (n), A
+pub fn opcode_e0(cpu: &mut Cpu) -> InsnResult {
+	let low_byte = cpu.fetch::<u8>()? as u16;
+	let address: u16 = 0xFF00 | low_byte;
+
+	let value: u8 = cpu.registers.get(Register::A) as u8;
+	cpu.mmap.write(address, value)?;
+
+	Ok(12)
+}
+
+/// pop HL
+pub fn opcode_e1(cpu: &mut Cpu) -> InsnResult {
+	pop_nn(cpu, Register::HL)
+}
+
 /// ld (C), A
 pub fn opcode_e2(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = 0xFF00 | cpu.registers.get(Register::C);
@@ -472,6 +638,11 @@ pub fn opcode_e2(cpu: &mut Cpu) -> InsnResult {
 	cpu.mmap.write(address, value)?;
 
 	Ok(8)
+}
+
+/// push HL
+pub fn opcode_e5(cpu: &mut Cpu) -> InsnResult {
+	push_nn(cpu, Register::HL)
 }
 
 /// ld (nn), A
@@ -484,6 +655,23 @@ pub fn opcode_ea(cpu: &mut Cpu) -> InsnResult {
 	Ok(16)
 }
 
+/// ld A, (n)
+pub fn opcode_f0(cpu: &mut Cpu) -> InsnResult {
+	let low_byte = cpu.fetch::<u8>()? as u16;
+	let address: u16 = 0xFF00 | low_byte;
+
+	let value: u8 = cpu.mmap.read(address)?;
+
+	cpu.registers.set(Register::A, value as u16);
+
+	Ok(12)
+}
+
+/// pop AF
+pub fn opcode_f1(cpu: &mut Cpu) -> InsnResult {
+	pop_nn(cpu, Register::AF)
+}
+
 /// ld A, (C)
 pub fn opcode_f2(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = 0xFF00 | cpu.registers.get(Register::C);
@@ -492,6 +680,33 @@ pub fn opcode_f2(cpu: &mut Cpu) -> InsnResult {
 	cpu.registers.set(Register::A, value as u16);
 
 	Ok(8)
+}
+
+/// push AF
+pub fn opcode_f5(cpu: &mut Cpu) -> InsnResult {
+	push_nn(cpu, Register::AF)
+}
+
+/// ld HL, SP+n
+pub fn opcode_f8(_cpu: &mut Cpu) -> InsnResult {
+	// let offset: u8 = cpu.fetch()?;
+	// let sp = cpu.registers.get(Register::SP);
+
+	// cpu.registers.set(Register::HL, sp + (offset as u16));
+
+	// cpu.registers.set_flag(Flag::Z, false);
+	// cpu.registers.set_flag(Flag::N, false);
+	// // TODO set other flags
+
+	// Ok(8)
+
+	// I'm considering using an ALU implementation instead.
+	unimplemented!();
+}
+
+/// ld SP, HL
+pub fn opcode_f9(cpu: &mut Cpu) -> InsnResult {
+	move_registers(cpu, Register::SP, Register::HL)
 }
 
 /// ld A, (nn)
