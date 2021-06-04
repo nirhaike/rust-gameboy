@@ -8,6 +8,8 @@ use super::Cpu;
 use super::state::registers::*;
 use super::instructions::InsnResult;
 
+use crate::bus::Memory;
+
 /// Implementation of 8-bit arithmetic operations.
 pub mod alu8 {
 	use super::*;
@@ -35,8 +37,10 @@ pub mod alu8 {
 	}
 
 	/// Applies the given operation on the A register and the given 8-bit immediate.
-	pub fn op_imm(op: Alu8Op, cpu: &mut Cpu, imm: u8) -> InsnResult {
+	pub fn op_imm(op: Alu8Op, cpu: &mut Cpu) -> InsnResult {
 		let left = cpu.registers.get(Register::A) as u8;
+		let imm = cpu.fetch::<u8>()?;
+
 		let result = op(cpu, left, imm) as u16;
 
 		cpu.registers.set(Register::A, result);
@@ -45,16 +49,20 @@ pub mod alu8 {
 	}
 
 	/// Applies the given operation on the A register and the value at (HL).
-	pub fn op_mem(op: Alu8Op, cpu: &mut Cpu, imm: u8) -> InsnResult {
+	pub fn op_mem(op: Alu8Op, cpu: &mut Cpu) -> InsnResult {
+		let address = cpu.registers.get(Register::HL);
+
 		let left = cpu.registers.get(Register::A) as u8;
-		let result = op(cpu, left, imm) as u16;
+		let right: u8 = cpu.mmap.read(address)?;
+
+		let result = op(cpu, left, right) as u16;
 
 		cpu.registers.set(Register::A, result);
 
 		Ok(8)
 	}
 
-	/// Adds the given arguments, sets the relevant flags accordinately and return the result.
+	/// Adds the given arguments, sets the relevant flags accordinately and returns the result.
 	pub fn add(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
 		let result_16 = (lhs as u16) + (rhs as u16);
 		let result_8 = (lhs & 0x0F) + (rhs & 0x0F);
@@ -67,6 +75,25 @@ pub mod alu8 {
 		cpu.registers.set_flag(Flag::H, result_8 > 0x0F);
 		cpu.registers.set_flag(Flag::C, result_16 > 0xFF);
 
-		(result_16 & 0xFF) as u8
+		result
+	}
+
+	/// Adds the given arguments and the carry flag, if set.
+	/// The function sets the relevant flags accordinately and returns the result.
+	pub fn adc(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
+		let carry = cpu.registers.get_flag(Flag::C) as u8;
+
+		let result_16 = (lhs as u16) + (rhs as u16) + (carry as u16);
+		let result_8 = (lhs & 0x0F) + (rhs & 0x0F) + carry;
+
+		let result: u8 = (result_16 & 0xFF) as u8;
+
+		// Set the relevant flags
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, result_8 > 0x0F);
+		cpu.registers.set_flag(Flag::C, result_16 > 0xFF);
+
+		result
 	}
 }

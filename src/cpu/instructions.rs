@@ -5,6 +5,7 @@
 //! Implementation of the Z80-like cpu's instructions.
 
 use super::Cpu;
+use super::alu::*;
 use super::state::registers::*;
 
 use crate::bus::Memory;
@@ -594,6 +595,86 @@ pub fn opcode_7f(cpu: &mut Cpu) -> InsnResult {
 	move_registers(cpu, Register::A, Register::A)
 }
 
+/// add A, B
+pub fn opcode_80(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::B)
+}
+
+/// add A, C
+pub fn opcode_81(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::C)
+}
+
+/// add A, D
+pub fn opcode_82(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::D)
+}
+
+/// add A, E
+pub fn opcode_83(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::E)
+}
+
+/// add A, H
+pub fn opcode_84(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::H)
+}
+
+/// add A, L
+pub fn opcode_85(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::L)
+}
+
+/// add A, (HL)
+pub fn opcode_86(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::add, cpu)
+}
+
+/// add A, A
+pub fn opcode_87(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::add, cpu, Register::A, Register::A)
+}
+
+/// adc A, B
+pub fn opcode_88(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::B)
+}
+
+/// adc A, C
+pub fn opcode_89(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::C)
+}
+
+/// adc A, D
+pub fn opcode_8a(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::D)
+}
+
+/// adc A, E
+pub fn opcode_8b(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::E)
+}
+
+/// adc A, H
+pub fn opcode_8c(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::H)
+}
+
+/// adc A, L
+pub fn opcode_8d(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::L)
+}
+
+/// adc A, (HL)
+pub fn opcode_8e(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::adc, cpu)
+}
+
+/// adc A, A
+pub fn opcode_8f(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::adc, cpu, Register::A, Register::A)
+}
+
 /// pop BC
 pub fn opcode_c1(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::BC)
@@ -610,6 +691,16 @@ pub fn opcode_c3(cpu: &mut Cpu) -> InsnResult {
 /// push BC
 pub fn opcode_c5(cpu: &mut Cpu) -> InsnResult {
 	push_nn(cpu, Register::BC)
+}
+
+/// add A, #
+pub fn opcode_c6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::add, cpu)
+}
+
+/// adc A, #
+pub fn opcode_ce(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::adc, cpu)
 }
 
 /// pop DE
