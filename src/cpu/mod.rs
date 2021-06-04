@@ -43,7 +43,7 @@ impl<'a> Cpu<'a> {
 	pub fn new(config: &'a Config, cartridge: &'a mut Cartridge<'a>) -> Self {
 		Cpu {
 			registers: CpuState::new(config),
-			mmap: SystemBus::new(cartridge),
+			mmap: SystemBus::new(&config, cartridge),
 			config,
 		}
 	}

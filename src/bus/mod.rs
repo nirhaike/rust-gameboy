@@ -8,9 +8,13 @@
 pub mod memory_range;
 pub mod cartridge;
 pub mod rtc;
+pub mod io;
 
+use io::*;
 use cartridge::*;
 use memory_range::*;
+
+use crate::config::Config;
 use crate::GameboyError;
 
 /// Bus locations-related constants.
@@ -58,6 +62,7 @@ pub trait Memory {
 pub struct SystemBus<'a> {
 	//ram: Ram,
 	pub(crate) cartridge: &'a mut Cartridge<'a>,
+	pub(crate) io: IOPorts,
 }
 
 /// An abstraction for fetching mutable and immutable regions.
@@ -81,6 +86,11 @@ macro_rules! get_region {
 					// TODO same as internal ram but calculate the offset first
 					unimplemented!();
 				}
+				// I/O registers
+				memory_range!(MMAP_IO_PORTS) |
+				memory_range!(MMAP_INTERRUPT_EN) => {
+					Ok(&$($mut_)* self.io)
+				}
 				_ => {
 					Err(GameboyError::Io("Accessed an unmapped region."))
 				}
@@ -91,8 +101,11 @@ macro_rules! get_region {
 
 impl<'a> SystemBus<'a> {
 	/// Initialize a new address space.
-	pub fn new(cartridge: &'a mut Cartridge<'a>) -> Self {
-		SystemBus { cartridge }
+	pub fn new(config: &'a Config, cartridge: &'a mut Cartridge<'a>) -> Self {
+		SystemBus {
+			cartridge,
+			io: IOPorts::new(config),
+		}
 	}
 
 	// Get an immutable region
