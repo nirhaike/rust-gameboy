@@ -97,8 +97,8 @@ mod tests {
 	use super::*;
 	use alloc::boxed::Box;
 
-	#[test]
-	fn test_fetch() -> Result<(), GameboyError> {
+	fn with_cpu<F>(callback: F) -> Result<(), GameboyError>
+		where F: FnOnce(&mut Cpu) -> Result<(), GameboyError> {
 		// Initialize the cpu
 		let config = Config::default();
 		let mut rom = cartridge::tests::empty_rom(CartridgeType::MBC3);
@@ -107,18 +107,25 @@ mod tests {
 
 		let mut cpu = Cpu::new(&config, &mut cartridge);
 
-		// Move the program counter to the RAM bank.
-		cpu.registers.set(Register::PC, 0xA000);
+		callback(&mut cpu)
+	}
 
-		// Write arbitrary data to the memory starting from the program counter.
-		let data: &[u8] = &[1, 2, 3];
-		cpu.mmap.cartridge.set_ram_enabled(true);
-		cpu.mmap.write_all(cpu.registers.get(Register::PC), data)?;
+	#[test]
+	fn test_fetch() -> Result<(), GameboyError> {
+		with_cpu(|cpu| {
+			// Move the program counter to the RAM bank.
+			cpu.registers.set(Register::PC, 0xA000);
 
-		// Make sure that fetch works as expected.
-		assert!(cpu.fetch::<u16>()? == 0x0201);
-		assert!(cpu.fetch::<u8>()? == 0x03);
+			// Write arbitrary data to the memory starting from the program counter.
+			let data: &[u8] = &[1, 2, 3];
+			cpu.mmap.cartridge.set_ram_enabled(true);
+			cpu.mmap.write_all(cpu.registers.get(Register::PC), data)?;
 
-		Ok(())
+			// Make sure that fetch works as expected.
+			assert!(cpu.fetch::<u16>()? == 0x0201);
+			assert!(cpu.fetch::<u8>()? == 0x03);
+
+			Ok(())
+		})
 	}
 }

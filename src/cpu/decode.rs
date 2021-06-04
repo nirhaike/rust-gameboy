@@ -98,6 +98,7 @@ impl<'a> Cpu<'a> {
 			0x7e => Ok(opcode_7e),
 			0x7f => Ok(opcode_7f),
 			0xc1 => Ok(opcode_c1),
+			0xc3 => Ok(opcode_c3),
 			0xc5 => Ok(opcode_c5),
 			0xd1 => Ok(opcode_d1),
 			0xd5 => Ok(opcode_d5),

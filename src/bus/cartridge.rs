@@ -129,7 +129,7 @@ impl<'a> Cartridge<'a> {
 			0x00 | 0x08 | 0x09 => CartridgeType::RomOnly,
 			0x01 | 0x02 | 0x03 => CartridgeType::MBC1(MemoryModel::MoreRom),
 			0x05 | 0x06 => CartridgeType::MBC2,
-			0x12 | 0x13 => CartridgeType::MBC3,
+			0x0F | 0x10 | 0x11 | 0x12 | 0x13 => CartridgeType::MBC3,
 			0x19 | 0x1A | 0x1C | 0x1D | 0x1E => CartridgeType::MBC5,
 			_ => { return Err(GameboyError::Cartridge("Invalid cartridge type.")); }
 		};

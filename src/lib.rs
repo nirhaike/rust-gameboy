@@ -43,8 +43,8 @@ impl fmt::Display for GameboyError {
 			GameboyError::NotImplemented => write!(f, "Not implemented"),
             GameboyError::Cartridge(ref info) => write!(f, "Cartridge error: {}", info),
             GameboyError::Io(ref info) => write!(f, "IO error: {}", info),
-            GameboyError::BadAddress(address) => write!(f, "Bad address: {}", address),
-            GameboyError::BadOpcode(value) => write!(f, "Bad opcode: {}", value),
+            GameboyError::BadAddress(address) => write!(f, "Bad address: 0x{:x}", address),
+            GameboyError::BadOpcode(value) => write!(f, "Bad opcode: 0x{:x}", value),
             GameboyError::BadValue(value) => write!(f, "Bad value: {}", value),
         }
 	}

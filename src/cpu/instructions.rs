@@ -599,6 +599,14 @@ pub fn opcode_c1(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::BC)
 }
 
+/// jp nn
+pub fn opcode_c3(cpu: &mut Cpu) -> InsnResult {
+	let dest: u16 = cpu.fetch()?;
+	cpu.registers.set(Register::PC, dest);
+
+	Ok(12)
+}
+
 /// push BC
 pub fn opcode_c5(cpu: &mut Cpu) -> InsnResult {
 	push_nn(cpu, Register::BC)
