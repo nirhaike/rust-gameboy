@@ -104,12 +104,12 @@ mod util {
 		let value: u16 = cpu.registers.get(reg);
 
 		// Decrement the stack pointer.
-		cpu.registers.set(Register::SP, address - 2);
+		cpu.registers.set(Register::SP, address.wrapping_sub(2));
 
-		address -= 1;
+		address = address.wrapping_sub(1);
 		cpu.mmap.write(address, ((value >> 8) & 0xFF) as u8)?;
 
-		address -= 1;
+		address = address.wrapping_sub(1);
 		cpu.mmap.write(address, (value & 0xFF) as u8)?;
 
 		Ok(16)
@@ -124,12 +124,12 @@ mod util {
 		let address: u16 = cpu.registers.get(Register::SP);
 
 		let high = cpu.mmap.read(address)? as u16;
-		let low = cpu.mmap.read(address + 1)? as u16;
+		let low = cpu.mmap.read(address.wrapping_add(1))? as u16;
 
 		cpu.registers.set(reg, (high << 8) + low);
 
 		// Increment the stack pointer.
-		cpu.registers.set(Register::SP, address + 2);
+		cpu.registers.set(Register::SP, address.wrapping_add(2));
 
 		Ok(12)
 	}
@@ -158,7 +158,7 @@ pub fn opcode_08(cpu: &mut Cpu) -> InsnResult {
 	let value = cpu.registers.get(Register::SP);
 
 	cpu.mmap.write(address, (value & 0xFF) as u8)?;
-	cpu.mmap.write(address + 1, ((value >> 8) & 0xFF) as u8)?;
+	cpu.mmap.write(address.wrapping_add(1), ((value >> 8) & 0xFF) as u8)?;
 
 	Ok(20)
 }
@@ -210,7 +210,7 @@ pub fn opcode_22(cpu: &mut Cpu) -> InsnResult {
 
 	cpu.mmap.write(address, value)?;
 
-	cpu.registers.set(Register::HL, address + 1);
+	cpu.registers.set(Register::HL, address.wrapping_add(1));
 
 	Ok(8)
 }
@@ -225,7 +225,7 @@ pub fn opcode_2a(cpu: &mut Cpu) -> InsnResult {
 	let address = cpu.registers.get(Register::HL);
 	let value: u8 = cpu.mmap.read(address)?;
 	cpu.registers.set(Register::A, value as u16);
-	cpu.registers.set(Register::HL, address + 1);
+	cpu.registers.set(Register::HL, address.wrapping_add(1));
 
 	Ok(8)
 }
@@ -247,7 +247,7 @@ pub fn opcode_32(cpu: &mut Cpu) -> InsnResult {
 
 	cpu.mmap.write(address, value)?;
 
-	cpu.registers.set(Register::HL, address - 1);
+	cpu.registers.set(Register::HL, address.wrapping_sub(1));
 
 	Ok(8)
 }
@@ -267,7 +267,7 @@ pub fn opcode_3a(cpu: &mut Cpu) -> InsnResult {
 	let address = cpu.registers.get(Register::HL);
 	let value: u8 = cpu.mmap.read(address)?;
 	cpu.registers.set(Register::A, value as u16);
-	cpu.registers.set(Register::HL, address - 1);
+	cpu.registers.set(Register::HL, address.wrapping_sub(1));
 
 	Ok(8)
 }
@@ -675,6 +675,126 @@ pub fn opcode_8f(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::adc, cpu, Register::A, Register::A)
 }
 
+/// sub A, B
+pub fn opcode_90(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::B)
+}
+
+/// sub A, C
+pub fn opcode_91(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::C)
+}
+
+/// sub A, D
+pub fn opcode_92(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::D)
+}
+
+/// sub A, E
+pub fn opcode_93(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::E)
+}
+
+/// sub A, H
+pub fn opcode_94(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::H)
+}
+
+/// sub A, L
+pub fn opcode_95(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::L)
+}
+
+/// sub A, (HL)
+pub fn opcode_96(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::sub, cpu)
+}
+
+/// sub A, A
+pub fn opcode_97(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sub, cpu, Register::A, Register::A)
+}
+
+/// sbc A, B
+pub fn opcode_98(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::B)
+}
+
+/// sbc A, C
+pub fn opcode_99(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::C)
+}
+
+/// sbc A, D
+pub fn opcode_9a(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::D)
+}
+
+/// sbc A, E
+pub fn opcode_9b(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::E)
+}
+
+/// sbc A, H
+pub fn opcode_9c(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::H)
+}
+
+/// sbc A, L
+pub fn opcode_9d(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::L)
+}
+
+/// sbc A, (HL)
+pub fn opcode_9e(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::sbc, cpu)
+}
+
+/// sbc A, A
+pub fn opcode_9f(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::A)
+}
+
+/// cp A, B
+pub fn opcode_b8(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::B)
+}
+
+/// cp A, C
+pub fn opcode_b9(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::C)
+}
+
+/// cp A, D
+pub fn opcode_ba(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::D)
+}
+
+/// cp A, E
+pub fn opcode_bb(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::E)
+}
+
+/// cp A, H
+pub fn opcode_bc(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::H)
+}
+
+/// cp A, L
+pub fn opcode_bd(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::L)
+}
+
+/// cp A, (HL)
+pub fn opcode_be(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::cp, cpu)
+}
+
+/// cp A, A
+pub fn opcode_bf(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::cp, cpu, Register::A, Register::A)
+}
+
 /// pop BC
 pub fn opcode_c1(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::BC)
@@ -711,6 +831,11 @@ pub fn opcode_d1(cpu: &mut Cpu) -> InsnResult {
 /// push DE
 pub fn opcode_d5(cpu: &mut Cpu) -> InsnResult {
 	push_nn(cpu, Register::DE)
+}
+
+/// sub A, #
+pub fn opcode_d6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::sub, cpu)
 }
 
 /// ld (n), A
@@ -816,4 +941,9 @@ pub fn opcode_fa(cpu: &mut Cpu) -> InsnResult {
 	cpu.registers.set(Register::A, value as u16);
 
 	Ok(16)
+}
+
+/// cp A, #
+pub fn opcode_fe(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::cp, cpu)
 }
