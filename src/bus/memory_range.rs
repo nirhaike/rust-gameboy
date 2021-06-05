@@ -38,6 +38,12 @@ macro_rules! range_end {
 	($range:tt) => { (<() as MemoryBounds<$range>>::END as usize) }
 }
 
+/// Returns the length of the given memory range.
+#[macro_export]
+macro_rules! range_size {
+	($range:tt) => { range_end!($range) - range_start!($range) + 1 }
+}
+
 /// Create a range pattern from the given memory range.
 ///
 /// # Examples

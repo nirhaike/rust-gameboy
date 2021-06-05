@@ -144,15 +144,21 @@ pub mod alu8 {
 		sub(cpu, lhs, rhs)
 	}
 
+	#[cfg(test)]
 	mod tests {
+		use super::*;
+		use crate::GameboyError;
+
 		/// Checks whether the correct instructions stores the operation results.
 		#[test]
 		fn test_writeback() -> Result<(), GameboyError> {
-			let cp_ptr: Alu8Op = &cp;
-			let sub_ptr: Alu8Op = &sub;
+			let cp_ptr: Alu8Op = cp;
+			let sub_ptr: Alu8Op = sub;
 
 			assert!(!stores_result!(cp_ptr));
 			assert!(stores_result!(sub_ptr));
+
+			Ok(())
 		}
 	}
 }

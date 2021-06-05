@@ -8,9 +8,11 @@
 pub mod memory_range;
 pub mod cartridge;
 pub mod rtc;
+pub mod ram;
 pub mod io;
 
 use io::*;
+use ram::*;
 use cartridge::*;
 use memory_range::*;
 
@@ -60,9 +62,9 @@ pub trait Memory {
 ///
 /// This implementation provides memory/peripheral abstraction.
 pub struct SystemBus<'a> {
-	//ram: Ram,
 	pub(crate) cartridge: &'a mut Cartridge<'a>,
 	pub(crate) io: IOPorts,
+	pub(crate) ram: InternalRam,
 }
 
 /// An abstraction for fetching mutable and immutable regions.
@@ -79,12 +81,7 @@ macro_rules! get_region {
 				}
 				// Internal RAM
 				memory_range!(MMAP_RAM_INTERNAL) => {
-					unimplemented!();
-				}
-				// Echo of internal RAM
-				memory_range!(MMAP_RAM_ECHO) => {
-					// TODO same as internal ram but calculate the offset first
-					unimplemented!();
+					Ok(&$($mut_)* self.ram)
 				}
 				// I/O registers
 				memory_range!(MMAP_IO_PORTS) |
@@ -105,6 +102,7 @@ impl<'a> SystemBus<'a> {
 		SystemBus {
 			cartridge,
 			io: IOPorts::new(config),
+			ram: InternalRam::new(),
 		}
 	}
 

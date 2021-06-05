@@ -117,7 +117,7 @@ mod util {
 
 	/// Pops a 16-bit register from the stack.
 	pub fn pop_nn(cpu: &mut Cpu,
-				   reg: Register) -> InsnResult {
+				  reg: Register) -> InsnResult {
 
 		assert!(get_type(&reg) == RegisterType::Wide);
 
@@ -133,9 +133,30 @@ mod util {
 
 		Ok(12)
 	}
+
+	/// Pops a 16-bit register from the stack.
+	pub fn jump_conditional(cpu: &mut Cpu,
+							flag: Flag,
+							expected_state: bool) -> InsnResult {
+
+		let offset: i8 = cpu.fetch::<u8>()? as i8;
+		let address: u16 = cpu.registers.get(Register::PC);
+
+		if cpu.registers.get_flag(flag) == expected_state {
+			// Add the offset to the program counter (preserving the offset's sign)
+			cpu.registers.set(Register::PC, address.wrapping_add((offset as i16) as u16));
+		}
+
+		Ok(8)
+	}
 }
 
 use util::*;
+
+/// nop
+pub fn opcode_00(_cpu: &mut Cpu) -> InsnResult {
+	Ok(4)
+}
 
 /// ld BC, nn
 pub fn opcode_01(cpu: &mut Cpu) -> InsnResult {
@@ -198,6 +219,11 @@ pub fn opcode_1e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::E)
 }
 
+/// jr NZ, n
+pub fn opcode_20(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::Z, false)
+}
+
 /// ld HL, nn
 pub fn opcode_21(cpu: &mut Cpu) -> InsnResult {
 	load_imm16_to_register(cpu, Register::HL)
@@ -220,6 +246,11 @@ pub fn opcode_26(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::H)
 }
 
+/// jr Z, n
+pub fn opcode_28(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::Z, true)
+}
+
 /// ld A, (HL+)
 pub fn opcode_2a(cpu: &mut Cpu) -> InsnResult {
 	let address = cpu.registers.get(Register::HL);
@@ -233,6 +264,11 @@ pub fn opcode_2a(cpu: &mut Cpu) -> InsnResult {
 /// ld L, n
 pub fn opcode_2e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::L)
+}
+
+/// jr NC, n
+pub fn opcode_30(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::C, false)
 }
 
 /// ld SP, nn
@@ -260,6 +296,11 @@ pub fn opcode_36(cpu: &mut Cpu) -> InsnResult {
 	cpu.mmap.write(address, value)?;
 
 	Ok(12)
+}
+
+/// jr C, n
+pub fn opcode_38(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::C, true)
 }
 
 /// ld A, (HL-)

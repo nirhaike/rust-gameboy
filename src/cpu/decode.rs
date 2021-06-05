@@ -13,6 +13,7 @@ impl<'a> Cpu<'a> {
 	/// Returns the instruction that matches the given opcode.
 	pub fn decode(&mut self, opcode: u8) -> Result<Instruction, GameboyError> {
 		match opcode {
+			0x00 => Ok(opcode_00),
 			0x01 => Ok(opcode_01),
 			0x02 => Ok(opcode_02),
 			0x06 => Ok(opcode_06),
@@ -24,14 +25,18 @@ impl<'a> Cpu<'a> {
 			0x16 => Ok(opcode_16),
 			0x1a => Ok(opcode_1a),
 			0x1e => Ok(opcode_1e),
+			0x20 => Ok(opcode_20),
 			0x21 => Ok(opcode_21),
 			0x22 => Ok(opcode_22),
 			0x26 => Ok(opcode_26),
+			0x28 => Ok(opcode_28),
 			0x2a => Ok(opcode_2a),
 			0x2e => Ok(opcode_2e),
+			0x30 => Ok(opcode_30),
 			0x31 => Ok(opcode_31),
 			0x32 => Ok(opcode_32),
 			0x36 => Ok(opcode_36),
+			0x38 => Ok(opcode_38),
 			0x3a => Ok(opcode_3a),
 			0x3e => Ok(opcode_3e),
 			0x40 => Ok(opcode_40),
