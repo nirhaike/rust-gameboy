@@ -142,7 +142,7 @@ mod util {
 		let offset: i8 = cpu.fetch::<u8>()? as i8;
 		let address: u16 = cpu.registers.get(Register::PC);
 
-		if cpu.registers.get_flag(flag) == expected_state {
+		if cpu.registers.flag(flag) == expected_state {
 			// Add the offset to the program counter (preserving the offset's sign)
 			cpu.registers.set(Register::PC, address.wrapping_add((offset as i16) as u16));
 		}

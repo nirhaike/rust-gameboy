@@ -23,6 +23,9 @@ impl InternalRam {
 	}
 
 	/// Returns the mapped offset within the ram for the given address.
+	///
+	/// The ram has two memory ranges mapped to it (MMAP_RAM_INTERNAL and MMAP_RAM_ECHO).
+	/// This function resolves the current range and returns the offset relative to it.
 	fn offset(&self, address: u16) -> usize {
 		match address {
 			memory_range!(MMAP_RAM_INTERNAL) => {
@@ -39,6 +42,7 @@ impl InternalRam {
 }
 
 impl Memory for InternalRam {
+	/// Write to the internal ram.
 	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
 		let offset = self.offset(address);
 
@@ -51,6 +55,7 @@ impl Memory for InternalRam {
 		Ok(())
 	}
 
+	/// Read from the internal ram.
 	fn read(&self, address: u16) -> Result<u8, GameboyError> {
 		let offset = self.offset(address);
 

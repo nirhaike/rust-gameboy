@@ -9,7 +9,7 @@ use registers::*;
 #[allow(missing_docs)]
 pub mod registers {
 	/// The size of the register file
-	pub const NUM_REGS: usize = 6;
+	pub const NUM_REGS: usize = 7;
 
 	/// We have 6 registers and they're 16-bit wide.
 	pub type RegisterFile = [u16; NUM_REGS];
@@ -26,6 +26,8 @@ pub mod registers {
 		SP,
 		/// Program counter
 		PC,
+		/// Interrupt master enable
+		IME,
 	}
 
 	/// The register's "type" is essentially the internal representation
@@ -47,7 +49,8 @@ pub mod registers {
 			Register::F |
 			Register::C |
 			Register::E |
-			Register::L => RegisterType::Low8,
+			Register::L |
+			Register::IME => RegisterType::Low8,
 			
 			Register::AF |
 			Register::BC |
@@ -67,6 +70,7 @@ pub mod registers {
 			Register::H | Register::L | Register::HL => 3,
 			Register::SP => 4,
 			Register::PC => 5,
+			Register::IME => 6,
 		}
 	}
 
@@ -81,7 +85,6 @@ pub mod registers {
 		N = 6,
 		/// Zero flag
 		Z = 7,
-
 	}
 }
 
@@ -114,6 +117,7 @@ impl<'a> CpuState<'a> {
 		self.set(Register::HL, 0x014D);
 		self.set(Register::SP, 0xFFFE);
 		self.set(Register::PC, 0x0100);
+		self.set(Register::IME, 0x00);
 
 		match self.config.model {
 			HardwareModel::GB | HardwareModel::SGB => {
@@ -158,7 +162,7 @@ impl<'a> CpuState<'a> {
 
 	/// Returns the state of the given cpu flag, as stored in
 	/// the 'F' register.
-	pub fn get_flag(&self, flag: Flag) -> bool {
+	pub fn flag(&self, flag: Flag) -> bool {
 		let flags_value: u16 = self.get(Register::F);
 
 		// Check whether the relevant bit is on
@@ -179,6 +183,16 @@ impl<'a> CpuState<'a> {
 		};
 
 		self.set(Register::F, new_flags);
+	}
+
+	/// Returns the IME register's state.
+	pub fn ime(&self) -> bool {
+		self.get(Register::IME) != 0
+	}
+
+	/// Sets the value of the Interrupt master enable register.
+	pub fn set_ime(&mut self, value: bool) {
+		self.set(Register::IME, value as u16);
 	}
 }
 
@@ -211,21 +225,21 @@ mod tests {
 
 		cpu.set(Register::F, 0b10010000);
 		//                    ^ZNHC
-		assert_eq!(true, cpu.get_flag(Flag::Z) &&
-						!cpu.get_flag(Flag::N) &&
-						!cpu.get_flag(Flag::H) &&
-						 cpu.get_flag(Flag::C));
+		assert_eq!(true, cpu.flag(Flag::Z) &&
+						!cpu.flag(Flag::N) &&
+						!cpu.flag(Flag::H) &&
+						 cpu.flag(Flag::C));
 
 		cpu.set(Register::F, 0b01000000);
-		assert_eq!(true, !cpu.get_flag(Flag::Z) &&
-						  cpu.get_flag(Flag::N) &&
-						 !cpu.get_flag(Flag::H) &&
-						 !cpu.get_flag(Flag::C));
+		assert_eq!(true, !cpu.flag(Flag::Z) &&
+						  cpu.flag(Flag::N) &&
+						 !cpu.flag(Flag::H) &&
+						 !cpu.flag(Flag::C));
 
 		cpu.set_flag(Flag::N, false);
-		assert_eq!(false, cpu.get_flag(Flag::N));
+		assert_eq!(false, cpu.flag(Flag::N));
 
 		cpu.set_flag(Flag::C, true);
-		assert_eq!(true, cpu.get_flag(Flag::C));
+		assert_eq!(true, cpu.flag(Flag::C));
 	}
 }

@@ -80,7 +80,8 @@ macro_rules! get_region {
 					Ok(&$($mut_)* (*self.cartridge))
 				}
 				// Internal RAM
-				memory_range!(MMAP_RAM_INTERNAL) => {
+				memory_range!(MMAP_RAM_INTERNAL) |
+				memory_range!(MMAP_RAM_ECHO) => {
 					Ok(&$($mut_)* self.ram)
 				}
 				// I/O registers

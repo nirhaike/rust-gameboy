@@ -92,7 +92,7 @@ pub mod alu8 {
 	/// Adds the given arguments and the carry flag, if set.
 	/// The function sets the relevant flags accordinately and returns the result.
 	pub fn adc(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
-		let carry = cpu.registers.get_flag(Flag::C) as u8;
+		let carry = cpu.registers.flag(Flag::C) as u8;
 
 		let result_16 = (lhs as u16).wrapping_add(rhs as u16).wrapping_add(carry as u16);
 		let result_8 = (lhs & 0x0F).wrapping_add(rhs & 0x0F).wrapping_add(carry);
@@ -124,7 +124,7 @@ pub mod alu8 {
 
 	/// Subtracts with carry, sets the relevant flags accordinately and returns the result.
 	pub fn sbc(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
-		let carry = cpu.registers.get_flag(Flag::C) as u16;
+		let carry = cpu.registers.flag(Flag::C) as u16;
 
 		let result_16 = (lhs as u16).wrapping_sub(rhs as u16).wrapping_sub(carry);
 		let result: u8 = (result_16 & 0xFF) as u8;
