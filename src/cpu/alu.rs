@@ -138,6 +138,19 @@ pub mod alu8 {
 		result
 	}
 
+	/// Performs xor, sets the relevant flags accordinately and returns the result.
+	pub fn xor(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
+		let result: u8 = lhs ^ rhs;
+
+		// Set the relevant flags
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, false);
+
+		result
+	}
+
 	/// Compares the given arguments and sets the relevant flags accordinately.
 	pub fn cp(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
 		// Compare is basically subtraction.

@@ -134,7 +134,7 @@ mod util {
 		Ok(12)
 	}
 
-	/// Pops a 16-bit register from the stack.
+	/// Performs a conditional jump instruction.
 	pub fn jump_conditional(cpu: &mut Cpu,
 							flag: Flag,
 							expected_state: bool) -> InsnResult {
@@ -148,6 +148,20 @@ mod util {
 		}
 
 		Ok(8)
+	}
+
+	/// Performs a conditional call instruction.
+	pub fn call_conditional(cpu: &mut Cpu,
+							flag: Flag,
+							expected_state: bool) -> InsnResult {
+		let dest: u16 = cpu.fetch()?;
+
+		if cpu.registers.flag(flag) == expected_state {
+			push_nn(cpu, Register::PC)?;
+			cpu.registers.set(Register::PC, dest);
+		}
+
+		Ok(12)
 	}
 }
 
@@ -796,6 +810,46 @@ pub fn opcode_9f(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::A)
 }
 
+/// xor A, B
+pub fn opcode_a8(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::B)
+}
+
+/// xor A, C
+pub fn opcode_a9(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::C)
+}
+
+/// xor A, D
+pub fn opcode_aa(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::D)
+}
+
+/// xor A, E
+pub fn opcode_ab(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::E)
+}
+
+/// xor A, H
+pub fn opcode_ac(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::H)
+}
+
+/// xor A, L
+pub fn opcode_ad(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::L)
+}
+
+/// xor A, (HL)
+pub fn opcode_ae(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::xor, cpu)
+}
+
+/// xor A, A
+pub fn opcode_af(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::xor, cpu, Register::A, Register::A)
+}
+
 /// cp A, B
 pub fn opcode_b8(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::cp, cpu, Register::A, Register::B)
@@ -849,6 +903,11 @@ pub fn opcode_c3(cpu: &mut Cpu) -> InsnResult {
 	Ok(12)
 }
 
+/// call NZ, nn
+pub fn opcode_c4(cpu: &mut Cpu) -> InsnResult {
+	call_conditional(cpu, Flag::Z, false)
+}
+
 /// push BC
 pub fn opcode_c5(cpu: &mut Cpu) -> InsnResult {
 	push_nn(cpu, Register::BC)
@@ -859,6 +918,21 @@ pub fn opcode_c6(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::add, cpu)
 }
 
+/// call Z, nn
+pub fn opcode_cc(cpu: &mut Cpu) -> InsnResult {
+	call_conditional(cpu, Flag::Z, true)
+}
+
+/// call nn
+pub fn opcode_cd(cpu: &mut Cpu) -> InsnResult {
+	let dest: u16 = cpu.fetch()?;
+
+	push_nn(cpu, Register::PC)?;
+	cpu.registers.set(Register::PC, dest);
+
+	Ok(12)
+}
+
 /// adc A, #
 pub fn opcode_ce(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::adc, cpu)
@@ -867,6 +941,16 @@ pub fn opcode_ce(cpu: &mut Cpu) -> InsnResult {
 /// pop DE
 pub fn opcode_d1(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::DE)
+}
+
+/// call NC, nn
+pub fn opcode_d4(cpu: &mut Cpu) -> InsnResult {
+	call_conditional(cpu, Flag::C, false)
+}
+
+/// call C, nn
+pub fn opcode_dc(cpu: &mut Cpu) -> InsnResult {
+	call_conditional(cpu, Flag::C, true)
 }
 
 /// push DE
@@ -920,6 +1004,11 @@ pub fn opcode_ea(cpu: &mut Cpu) -> InsnResult {
 	Ok(16)
 }
 
+/// xor A, #
+pub fn opcode_ee(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::xor, cpu)
+}
+
 /// ld A, (n)
 pub fn opcode_f0(cpu: &mut Cpu) -> InsnResult {
 	let low_byte = cpu.fetch::<u8>()? as u16;
@@ -945,6 +1034,14 @@ pub fn opcode_f2(cpu: &mut Cpu) -> InsnResult {
 	cpu.registers.set(Register::A, value as u16);
 
 	Ok(8)
+}
+
+/// di
+pub fn opcode_f3(cpu: &mut Cpu) -> InsnResult {
+	// TODO add delay of one instruction before actually toggling the IME.
+	cpu.registers.set_ime(false);
+
+	Ok(4)
 }
 
 /// push AF
@@ -982,6 +1079,14 @@ pub fn opcode_fa(cpu: &mut Cpu) -> InsnResult {
 	cpu.registers.set(Register::A, value as u16);
 
 	Ok(16)
+}
+
+/// ei
+pub fn opcode_fb(cpu: &mut Cpu) -> InsnResult {
+	// TODO add delay of one instruction before actually toggling the IME.
+	cpu.registers.set_ime(true);
+
+	Ok(4)
 }
 
 /// cp A, #

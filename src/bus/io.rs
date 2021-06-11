@@ -130,17 +130,28 @@ impl IOPorts {
 }
 
 impl Memory for IOPorts {
-	fn write(&mut self, _address: u16, _value: u8) -> Result<(), GameboyError> {
-		unimplemented!();
+	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
+		match address {
+			// Specific behaviors will be added here.
+			memory_range!(MMAP_IO_PORTS) => {
+				self.registers[port_offset!(address)] = value;
+				Ok(())
+			}
+			memory_range!(MMAP_INTERRUPT_EN) => {
+				self.ie = value;
+				Ok(())
+			}
+			_ => {
+				Err(GameboyError::BadAddress(address))
+			}
+		}
 	}
 
 	fn read(&self, address: u16) -> Result<u8, GameboyError> {
 		match address {
-
 			// Specific behaviors will be added here.
 			memory_range!(MMAP_IO_PORTS) => {
-				let offset = (address as usize) - range_start!(MMAP_IO_PORTS);
-				Ok(self.registers[offset])
+				Ok(self.registers[port_offset!(address)])
 			}
 			memory_range!(MMAP_INTERRUPT_EN) => {
 				Ok(self.ie)
