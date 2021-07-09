@@ -103,7 +103,8 @@ macro_rules! get_region {
 				// Display
 				memory_range!(MMAP_IO_DISPLAY) |
 				memory_range!(MMAP_IO_PALETTES) |
-				memory_range!(MMAP_VIDEO_RAM) => {
+				memory_range!(MMAP_VIDEO_RAM) |
+				memory_range!(MMAP_SPRITE_OAM) => {
 					Ok(&$($mut_)* self.ppu)
 				}
 
@@ -184,12 +185,41 @@ mod private {
 	// Implement read/write operations for internal registers.
 	impl<'a> Memory for SystemBus<'a> {
 
-		fn write(&mut self, _address: u16, _value: u8) -> Result<(), GameboyError> {
-			panic!("<SystemBus as Memory>::write: DMA is currently unimplemented.");
+		fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
+			match address {
+				io::consts::IO_DMA => {
+					// The (non-GBC's double-speed) clock speed is 4.194304 MHz.
+					// It means that every cycle takes roughly 0.238419 microseconds.
+					// DMA transfer takes 152 microseconds, meaning that it takes ~640 clock cycles.
+					// The cycle-accurate gameboy docs describes the operation precisely.
+
+					// TODO we need to make the dma transfer realistic instead of performing
+					// it immediately, and allowing copy only from permitted addresses.
+					let source: u16 = (value as u16) << 8;
+
+					// Perform the transfer.
+					for i in 0..0x8B {
+						let data = self.read(source + (i as u16))?;
+						self.ppu.oam()[i] = data;
+					}
+
+					Ok(())
+				}
+				_ => {
+					panic!("Write operation not implemented for register: {}", address);
+				}
+			}
 		}
 
-		fn read(&self, _address: u16) -> Result<u8, GameboyError> {
-			panic!("<SystemBus as Memory>::read: DMA is currently unimplemented.");
+		fn read(&self, address: u16) -> Result<u8, GameboyError> {
+			match address {
+				io::consts::IO_DMA => {
+					Ok(0)
+				}
+				_ => {
+					panic!("Read operation not implemented for register: {}", address);
+				}
+			}
 		}
 	}
 }

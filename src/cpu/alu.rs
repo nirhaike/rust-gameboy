@@ -183,9 +183,46 @@ pub mod alu8 {
 		sub(cpu, lhs, rhs)
 	}
 
+	/// Swaps the lower and highr nibble of the given value,
+	/// and sets the relevant flags accordinately.
+	pub fn swap(cpu: &mut Cpu, value: u8) -> u8 {
+		let result: u8 = ((value & 0x0F) << 4) |
+						 ((value & 0xF0) >> 4);
+
+		// Set the relevant flags
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, false);
+
+		result
+	}
+
+	/// Rotates right the given register, possibly rotates the carry
+	/// flag too (if !carry, the carry flag will hold bit 0's result, but
+	/// bit 0 will move also to bit 7).
+	pub fn rotate_right(cpu: &mut Cpu, value: u8, carry: bool) -> u8 {
+		let old_carry = cpu.registers.flag(Flag::C);
+		let new_carry = (value & 1) == 1;
+
+		let mut result = value >> 1;
+
+		if carry {
+			result |= if old_carry { 0x80 } else { 0 };
+		} else {
+			result |= if new_carry { 0x80 } else { 0 };
+		}
+
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, new_carry);
+
+		result
+	}
+
 	/// Increment the given 8-bit register.
-	pub fn inc_register(cpu: &mut Cpu, reg: Register) -> InsnResult
-	{
+	pub fn inc_register(cpu: &mut Cpu, reg: Register) -> InsnResult {
 		assert!(get_type(&reg) != RegisterType::Wide);
 
 		let value: u8 = cpu.registers.get(reg) as u8;
@@ -197,8 +234,7 @@ pub mod alu8 {
 	}
 
 	/// Increment the given 8-bit memory pointed by HL.
-	pub fn inc_mem(cpu: &mut Cpu) -> InsnResult
-	{
+	pub fn inc_mem(cpu: &mut Cpu) -> InsnResult {
 		let address = cpu.registers.get(Register::HL);
 
 		let value: u8 = cpu.mmap.read(address)?;
@@ -210,8 +246,7 @@ pub mod alu8 {
 	}
 
 	/// Decrement the given 8-bit register.
-	pub fn dec_register(cpu: &mut Cpu, reg: Register) -> InsnResult
-	{
+	pub fn dec_register(cpu: &mut Cpu, reg: Register) -> InsnResult {
 		assert!(get_type(&reg) != RegisterType::Wide);
 
 		let value: u8 = cpu.registers.get(reg) as u8;
@@ -223,8 +258,7 @@ pub mod alu8 {
 	}
 
 	/// Decrement the given 8-bit memory pointed by HL.
-	pub fn dec_mem(cpu: &mut Cpu) -> InsnResult
-	{
+	pub fn dec_mem(cpu: &mut Cpu) -> InsnResult {
 		let address = cpu.registers.get(Register::HL);
 
 		let value: u8 = cpu.mmap.read(address)?;

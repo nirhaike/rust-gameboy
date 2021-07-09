@@ -151,6 +151,11 @@ impl Ppu {
 		self.wx = 0x00;
 	}
 
+	/// Getter for the OAM region's buffer.
+	pub fn oam(&mut self) -> &mut [u8] {
+		&mut self.oam
+	}
+
 	/// Update the ppu's state according to the elapsed time.
 	pub fn process(&mut self, cycles: usize) {
 		if !self.lcdc.power() {
@@ -246,7 +251,8 @@ impl Memory for Ppu {
 			IO_WX => { self.wx = value; }
 			memory_range!(MMAP_VIDEO_RAM) => {
 				// Make sure that vram is currently writable
-				assert!(self.mode != PpuMode::RenderLine);
+				// TODO fix ppu timing and enable this assertion.
+				// assert!(self.mode != PpuMode::RenderLine);
 
 				let offset = address as usize - range_start!(MMAP_VIDEO_RAM);
 				self.vram[offset] = value;
@@ -272,7 +278,8 @@ impl Memory for Ppu {
 			IO_WX => { self.wx }
 			memory_range!(MMAP_VIDEO_RAM) => {
 				// Make sure that vram is currently readable
-				assert!(self.mode != PpuMode::RenderLine);
+				// TODO fix ppu timing and enable this assertion.
+				// assert!(self.mode != PpuMode::RenderLine);
 
 				let offset = address as usize - range_start!(MMAP_VIDEO_RAM);
 				self.vram[offset]

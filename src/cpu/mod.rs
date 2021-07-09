@@ -38,6 +38,8 @@ pub struct Cpu<'a> {
 	pub mmap: SystemBus<'a>,
 	/// The emulator's configuration
 	pub config: &'a Config,
+
+	halted: bool,
 }
 
 impl<'a> Cpu<'a> {
@@ -48,7 +50,13 @@ impl<'a> Cpu<'a> {
 			registers: CpuState::new(config),
 			mmap: SystemBus::new(&config, cartridge),
 			config,
+			halted: false,
 		}
+	}
+
+	/// Halt the cpu.
+	pub fn halt(&mut self) {
+		self.halted = true;
 	}
 
 	/// Reads the next instruction bytes and increments the program counter appropriately.
@@ -80,7 +88,10 @@ impl<'a> Cpu<'a> {
 	pub fn execute(&mut self) -> Result<usize, GameboyError> {
 		// Enter an interrupt if any (and if interrupts are enabled).
 		let mut num_cycles = self.handle_interrupts()?;
-		num_cycles += self.execute_single()?;
+
+		if !self.halted {
+			num_cycles += self.execute_single()?;
+		}
 
 		// Progress the peripherals.
 		self.mmap.process(num_cycles);
