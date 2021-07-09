@@ -6,7 +6,7 @@
 //! This library provides emulation of the gameboy's Z80-like CPU and it's peripherals,
 //! as described in the publicly available "Game Boy CPU Manual".
 
-#[cfg(test)]
+#[cfg(any(test, feature = "debug"))]
 #[macro_use]
 extern crate std;
 extern crate core;

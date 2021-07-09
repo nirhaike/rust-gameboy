@@ -10,8 +10,8 @@ use super::memory_range::*;
 use crate::config::*;
 use crate::GameboyError;
 
-#[allow(unused)]
-mod consts {
+#[allow(unused, missing_docs)]
+pub mod consts {
 	use super::*;
 
 	/// The total size of the registers' memory mapping.
@@ -47,18 +47,9 @@ mod consts {
 	pub const IO_NR51: u16 = 0xFF25;
 	pub const IO_NR52: u16 = 0xFF26;
 	pub const IO_WAVE_PATTERN: MemoryRange = make_range!(0xFF30, 0xFF3F);
-	pub const IO_LCDC: u16 = 0xFF40;
-	pub const IO_STAT: u16 = 0xFF41;
-	pub const IO_SCY: u16 = 0xFF42;
-	pub const IO_SCX: u16 = 0xFF43;
-	pub const IO_LY: u16 = 0xFF44;
-	pub const IO_LYC: u16 = 0xFF45;
+
 	pub const IO_DMA: u16 = 0xFF46;
-	pub const IO_BGP: u16 = 0xFF47;
-	pub const IO_OBP0: u16 = 0xFF48;
-	pub const IO_OBP1: u16 = 0xFF49;
-	pub const IO_WY: u16 = 0xFF4A;
-	pub const IO_WX: u16 = 0xFF4B;
+
 }
 
 /// Convert address constants to register array offset.
@@ -69,17 +60,17 @@ macro_rules! port_offset {
 use consts::*;
 
 /// Handles read and write operation on I/O registers.
-pub struct IOPorts {
+pub struct IoPorts {
 	/// Registers that are mapped to the range 0xFF00-0xFF4B.
 	registers: [u8; IO_SIZE],
 	/// Interrupt enable (0xFFFF).
 	ie: u8,
 }
 
-impl IOPorts {
+impl IoPorts {
 	/// Initialize the I/O registers with boot state.
 	pub fn new(config: &Config) -> Self {
-		let mut io = IOPorts {
+		let mut io = IoPorts {
 			registers: [0_u8; IO_SIZE],
 			ie: 0,
 		};
@@ -116,20 +107,11 @@ impl IOPorts {
 			HardwareModel::SGB => 0xF0,
 			_ => 0xF1,
 		};
-		self.registers[port_offset!(IO_LCDC)] = 0x91;
-		self.registers[port_offset!(IO_SCY)] = 0x00;
-		self.registers[port_offset!(IO_SCX)] = 0x00;
-		self.registers[port_offset!(IO_LYC)] = 0x00;
-		self.registers[port_offset!(IO_BGP)] = 0xFC;
-		self.registers[port_offset!(IO_OBP0)] = 0xFF;
-		self.registers[port_offset!(IO_OBP1)] = 0xFF;
-		self.registers[port_offset!(IO_WY)] = 0x00;
-		self.registers[port_offset!(IO_WX)] = 0x00;
 		self.ie = 0x00;
 	}
 }
 
-impl Memory for IOPorts {
+impl Memory for IoPorts {
 	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
 		match address {
 			// Specific behaviors will be added here.

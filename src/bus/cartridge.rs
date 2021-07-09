@@ -162,11 +162,25 @@ impl<'a> Cartridge<'a> {
 	///
 	/// The command to set the rom bank is given by writing to a corresponding
 	/// memory range.
-	fn set_rom_bank(&mut self, address: u16, _value: u8) -> Result<(), GameboyError> {
+	fn set_rom_bank(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
 		// TODO implement this. The implementation should depend on the cartridge type.
 		match address {
-			memory_range!(ROM_BANK_SELECT) => { unimplemented!(); }
-			_ => { return Err(GameboyError::BadAddress(address)) }
+			memory_range!(ROM_BANK_SELECT) => {
+				let num_banks = Cartridge::num_rom_banks(self.rom)?;
+
+				if value >= num_banks {
+					return Err(GameboyError::BadValue(value));
+				}
+
+				if value == 0 {
+					self.rom_bank = 1;
+				} else {
+					self.rom_bank = value;
+				}
+
+				Ok(())
+			}
+			_ => { Err(GameboyError::BadAddress(address)) }
 		}
 	}
 

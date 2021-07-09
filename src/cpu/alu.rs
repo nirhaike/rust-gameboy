@@ -8,8 +8,6 @@ use super::Cpu;
 use super::state::registers::*;
 use super::instructions::InsnResult;
 
-use crate::bus::Memory;
-
 /// Implementation of 8-bit arithmetic operations.
 pub mod alu8 {
 	use super::*;
@@ -138,6 +136,34 @@ pub mod alu8 {
 		result
 	}
 
+	/// Performs logical AND between the given arguments,
+	/// sets the relevant flags accordinately and returns the result.
+	pub fn and(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
+		let result: u8 = lhs & rhs;
+
+		// Set the relevant flags
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, true);
+		cpu.registers.set_flag(Flag::C, false);
+
+		result
+	}
+
+	/// Performs logical OR between the given arguments,
+	/// sets the relevant flags accordinately and returns the result.
+	pub fn or(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
+		let result: u8 = lhs | rhs;
+
+		// Set the relevant flags
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, false);
+
+		result
+	}
+
 	/// Performs xor, sets the relevant flags accordinately and returns the result.
 	pub fn xor(cpu: &mut Cpu, lhs: u8, rhs: u8) -> u8 {
 		let result: u8 = lhs ^ rhs;
@@ -157,6 +183,58 @@ pub mod alu8 {
 		sub(cpu, lhs, rhs)
 	}
 
+	/// Increment the given 8-bit register.
+	pub fn inc_register(cpu: &mut Cpu, reg: Register) -> InsnResult
+	{
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let value: u8 = cpu.registers.get(reg) as u8;
+		let result: u8 = add(cpu, value, 1);
+
+		cpu.registers.set(reg, result as u16);
+
+		Ok(4)
+	}
+
+	/// Increment the given 8-bit memory pointed by HL.
+	pub fn inc_mem(cpu: &mut Cpu) -> InsnResult
+	{
+		let address = cpu.registers.get(Register::HL);
+
+		let value: u8 = cpu.mmap.read(address)?;
+		let result: u8 = add(cpu, value, 1);
+
+		cpu.mmap.write(address, result)?;
+
+		Ok(12)
+	}
+
+	/// Decrement the given 8-bit register.
+	pub fn dec_register(cpu: &mut Cpu, reg: Register) -> InsnResult
+	{
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let value: u8 = cpu.registers.get(reg) as u8;
+		let result: u8 = sub(cpu, value, 1);
+
+		cpu.registers.set(reg, result as u16);
+
+		Ok(4)
+	}
+
+	/// Decrement the given 8-bit memory pointed by HL.
+	pub fn dec_mem(cpu: &mut Cpu) -> InsnResult
+	{
+		let address = cpu.registers.get(Register::HL);
+
+		let value: u8 = cpu.mmap.read(address)?;
+		let result: u8 = sub(cpu, value, 1);
+
+		cpu.mmap.write(address, result)?;
+
+		Ok(12)
+	}
+
 	#[cfg(test)]
 	mod tests {
 		use super::*;
@@ -173,5 +251,94 @@ pub mod alu8 {
 
 			Ok(())
 		}
+	}
+}
+
+/// Implementation of 16-bit arithmetic operations.
+pub mod alu16 {
+	use super::*;
+
+	/// An ALU operation function pointer.
+	pub type Alu16Op = fn(&mut Cpu, u16, u16) -> u16;
+
+	/// Applies the given operation on two 16-bit registers.
+	pub fn op_registers(
+		op: Alu16Op,
+		cpu: &mut Cpu,
+		lhs: Register,
+		rhs: Register) -> InsnResult
+	{
+		assert!(get_type(&lhs) == RegisterType::Wide);
+
+		let left: u16 = cpu.registers.get(lhs);
+		let right: u16 = cpu.registers.get(rhs);
+
+		let result: u16 = op(cpu, left, right);
+
+		// Store the result.
+		cpu.registers.set(lhs, result);
+
+		Ok(8)
+	}
+
+	/// Applies the given operation on a 16-bit register and 8-bit immediate.
+	pub fn op_imm(
+		op: Alu16Op,
+		cpu: &mut Cpu,
+		lhs: Register) -> InsnResult
+	{
+		assert!(get_type(&lhs) == RegisterType::Wide);
+
+		let left: u16 = cpu.registers.get(lhs);
+		let right: u16 = cpu.fetch::<u8>()? as u16;
+
+		let result: u16 = op(cpu, left, right);
+
+		// Store the result.
+		cpu.registers.set(lhs, result);
+
+		Ok(16)
+	}
+
+	/// Adds the given arguments, sets the relevant flags accordinately and returns the result.
+	pub fn add(cpu: &mut Cpu, lhs: u16, rhs: u16) -> u16 {
+		let result_32 = (lhs as u32).wrapping_add(rhs as u32);
+		let result_16 = (lhs & 0x0FFF).wrapping_add(rhs & 0x0FFF);
+
+		let result: u16 = (result_32 & 0xFFFF) as u16;
+
+		// Set the relevant flags
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, result_16 > 0x0FFF);
+		cpu.registers.set_flag(Flag::C, result_32 > 0xFFFF);
+
+		result
+	}
+
+	/// Increment the given 16-bit register.
+	pub fn inc_register(cpu: &mut Cpu, reg: Register) -> InsnResult
+	{
+		assert!(get_type(&reg) == RegisterType::Wide);
+
+		let value: u16 = cpu.registers.get(reg);
+		let result: u16 = value.wrapping_add(1);
+
+		cpu.registers.set(reg, result);
+
+		Ok(8)
+	}
+
+	/// Decrement the given 16-bit register.
+	pub fn dec_register(cpu: &mut Cpu, reg: Register) -> InsnResult
+	{
+		assert!(get_type(&reg) == RegisterType::Wide);
+
+		let value: u16 = cpu.registers.get(reg);
+		let result: u16 = value.wrapping_sub(1);
+
+		cpu.registers.set(reg, result);
+
+		Ok(8)
 	}
 }

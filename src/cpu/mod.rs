@@ -7,6 +7,8 @@
 pub mod alu;
 pub mod state;
 pub mod decode;
+pub mod interrupts;
+pub mod disassemble;
 pub mod instructions;
 
 use num::PrimInt;
@@ -15,12 +17,13 @@ use core::ops::{AddAssign, Shl};
 
 use state::*;
 use state::registers::*;
-use instructions::Instruction;
+use instructions::{Instruction, enter_interrupt};
 
 use crate::bus::*;
 use crate::GameboyError;
 use crate::config::Config;
 use crate::bus::cartridge::*;
+use crate::cpu::interrupts::*;
 
 /// The gameboy's processor.
 ///
@@ -71,33 +74,76 @@ impl<'a> Cpu<'a> {
 	}
 
 	/// Emulates the execution of a single instruction.
+	///	This function also processes the peripherals and enters interrupts if any.
 	///
 	/// Returns the number of clock cycles the instruction has taken.
 	pub fn execute(&mut self) -> Result<usize, GameboyError> {
-		// Handle interrupts.
-		// TODO this.
+		// Enter an interrupt if any (and if interrupts are enabled).
+		let mut num_cycles = self.handle_interrupts()?;
+		num_cycles += self.execute_single()?;
+
+		// Progress the peripherals.
+		self.mmap.process(num_cycles);
+
+		Ok(num_cycles)
+	}
+
+	/// Emulates the execution of a single instruction.
+	///
+	/// Returns the number of clock cycles the instruction has taken.
+	pub fn execute_single(&mut self) -> Result<usize, GameboyError> {
+		let _address: u16 = self.registers.get(Register::PC);
 
 		// Fetch the opcode from the memory.
 		let opcode: u8 = self.fetch()?;
+
+		// TODO remove this!
+		#[cfg(feature = "debug")]
+		{
+			println!("0x{:04x}: ({:02x}) {}", _address, opcode, disassemble::disassemble(self, _address)?);
+			if opcode == 0xcd {
+				println!("Branch target: {:02x} {:02x}", self.mmap.read(_address + 1)?, self.mmap.read(_address + 2)?);
+			}
+		}
 
 		// Decode the given opcode.
 		// let insn: &Instruction = self.decode(opcode)?;
 		let insn: Instruction = self.decode(opcode)?;
 
 		// Execute and return the number of cycles taken.
-		let num_cycles = insn(self)?;
+		Ok(insn(self)?)
+	}
 
-		Ok(num_cycles)
+	/// TODO
+	pub fn handle_interrupts(&mut self) -> Result<usize, GameboyError> {
+		if !self.registers.ime() {
+			return Ok(0);
+		}
+
+		if let Some(interrupt) = self.mmap.fetch_interrupt() {
+			let isr = match interrupt {
+				Interrupt::VerticalBlank => 0x0040,
+				Interrupt::LcdStat => 0x0048,
+				Interrupt::Timer => 0x0050,
+				Interrupt::Serial => 0x0058,
+				Interrupt::Joypad => 0x0060,
+			};
+
+			return Ok(enter_interrupt(self, isr)?);
+		}
+
+		Ok(0)
 	}
 }
 
 #[cfg(test)]
 #[cfg(feature = "alloc")]
-mod tests {
+pub mod tests {
 	use super::*;
 	use alloc::boxed::Box;
 
-	fn with_cpu<F>(callback: F) -> Result<(), GameboyError>
+	/// With-closure for running logic with an initialized cpu instance.
+	pub fn with_cpu<F>(callback: F) -> Result<(), GameboyError>
 		where F: FnOnce(&mut Cpu) -> Result<(), GameboyError> {
 		// Initialize the cpu
 		let config = Config::default();

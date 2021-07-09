@@ -12,6 +12,7 @@ use crate::GameboyError;
 /// Gameboy's internal memory.
 pub struct InternalRam {
 	data: [u8; range_size!(MMAP_RAM_INTERNAL)],
+	high_data: [u8; range_size!(MMAP_RAM_HIGH)],
 }
 
 impl InternalRam {
@@ -19,6 +20,7 @@ impl InternalRam {
 	pub fn new() -> Self {
 		InternalRam {
 			data: [0_u8; range_size!(MMAP_RAM_INTERNAL)],
+			high_data: [0_u8; range_size!(MMAP_RAM_HIGH)],
 		}
 	}
 
@@ -35,7 +37,19 @@ impl InternalRam {
 				(address as usize - range_start!(MMAP_RAM_ECHO)) as usize
 			}
 			_ => {
-				unimplemented!();
+				panic!();
+			}
+		}
+	}
+
+	/// Returns the mapped offset within the high ram for the given address.
+	fn hram_offset(&self, address: u16) -> usize {
+		match address {
+			memory_range!(MMAP_RAM_HIGH) => {
+				(address as usize - range_start!(MMAP_RAM_HIGH)) as usize
+			}
+			_ => {
+				panic!();
 			}
 		}
 	}
@@ -44,25 +58,35 @@ impl InternalRam {
 impl Memory for InternalRam {
 	/// Write to the internal ram.
 	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
-		let offset = self.offset(address);
-
-		if offset >= self.data.len() {
-			return Err(GameboyError::Io("ram_write: Attempt to write out of bounds."));
+		match address {
+			memory_range!(MMAP_RAM_INTERNAL) |
+			memory_range!(MMAP_RAM_ECHO) => {
+				self.data[self.offset(address)] = value;
+				Ok(())
+			}
+			memory_range!(MMAP_RAM_HIGH) => {
+				self.high_data[self.hram_offset(address)] = value;
+				Ok(())
+			}
+			_ => {
+				Err(GameboyError::Io("ram_write: Attempt to write out of bounds."))
+			}
 		}
-
-		self.data[offset] = value;
-
-		Ok(())
 	}
 
 	/// Read from the internal ram.
 	fn read(&self, address: u16) -> Result<u8, GameboyError> {
-		let offset = self.offset(address);
-
-		if offset >= self.data.len() {
-			return Err(GameboyError::Io("ram_read: Attempt to read out of bounds."));
+		match address {
+			memory_range!(MMAP_RAM_INTERNAL) |
+			memory_range!(MMAP_RAM_ECHO) => {
+				Ok(self.data[self.offset(address)])
+			}
+			memory_range!(MMAP_RAM_HIGH) => {
+				Ok(self.high_data[self.hram_offset(address)])
+			}
+			_ => {
+				Err(GameboyError::Io("ram_read: Attempt to read out of bounds."))
+			}
 		}
-
-		Ok(self.data[offset])
 	}
 }

@@ -8,7 +8,6 @@ use super::Cpu;
 use super::alu::*;
 use super::state::registers::*;
 
-use crate::bus::Memory;
 use crate::GameboyError;
 
 /// Instructions implementations returns the amount of cycles taken,
@@ -50,7 +49,8 @@ mod util {
 						  dst: Register,
 						  src: Register) -> InsnResult {
 
-		assert!(get_type(&src) == get_type(&dst));
+		assert!((get_type(&src) == RegisterType::Wide) ==
+				(get_type(&dst) == RegisterType::Wide));
 
 		let value = cpu.registers.get(src);
 		cpu.registers.set(dst, value);
@@ -123,8 +123,8 @@ mod util {
 
 		let address: u16 = cpu.registers.get(Register::SP);
 
-		let high = cpu.mmap.read(address)? as u16;
-		let low = cpu.mmap.read(address.wrapping_add(1))? as u16;
+		let low = cpu.mmap.read(address)? as u16;
+		let high = cpu.mmap.read(address.wrapping_add(1))? as u16;
 
 		cpu.registers.set(reg, (high << 8) + low);
 
@@ -134,11 +134,20 @@ mod util {
 		Ok(12)
 	}
 
+	pub fn jump_relative(cpu: &mut Cpu) -> InsnResult {
+		let offset: i8 = cpu.fetch::<u8>()? as i8;
+		let address: u16 = cpu.registers.get(Register::PC);
+
+		// Add the offset to the program counter (preserving the offset's sign)
+		cpu.registers.set(Register::PC, address.wrapping_add((offset as i16) as u16));
+
+		Ok(8)
+	}
+
 	/// Performs a conditional jump instruction.
-	pub fn jump_conditional(cpu: &mut Cpu,
+	pub fn jump_relative_conditional(cpu: &mut Cpu,
 							flag: Flag,
 							expected_state: bool) -> InsnResult {
-
 		let offset: i8 = cpu.fetch::<u8>()? as i8;
 		let address: u16 = cpu.registers.get(Register::PC);
 
@@ -148,6 +157,19 @@ mod util {
 		}
 
 		Ok(8)
+	}
+
+	/// Performs an absolute jump instruction.
+	pub fn jump_conditional(cpu: &mut Cpu,
+							flag: Flag,
+							expected_state: bool) -> InsnResult {
+		let dest: u16 = cpu.fetch()?;
+
+		if cpu.registers.flag(flag) == expected_state {
+			cpu.registers.set(Register::PC, dest);
+		}
+
+		Ok(12)
 	}
 
 	/// Performs a conditional call instruction.
@@ -163,9 +185,57 @@ mod util {
 
 		Ok(12)
 	}
+
+	pub fn ret_conditional(cpu: &mut Cpu,
+						   flag: Flag,
+						   expected_state: bool) -> InsnResult {
+
+		if cpu.registers.flag(flag) == expected_state {
+			pop_nn(cpu, Register::PC)?;
+		}
+
+		Ok(8)
+	}
+
+	/// Resets the given bit of the given 8-bit register.
+	pub fn reset_register_bit(cpu: &mut Cpu,
+					 reg: Register,
+					 bit: u8) -> InsnResult {
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let data = cpu.registers.get(reg);
+		cpu.registers.set(reg, data & !(1 << bit));
+
+		Ok(8)
+	}
+
+	/// Resets the given bit of the memory location pointer by (HL).
+	pub fn reset_memory_bit(cpu: &mut Cpu, bit: u8) -> InsnResult {
+		let address = cpu.registers.get(Register::HL);
+		let data = cpu.mmap.read(address)?;
+
+		cpu.mmap.write(address, data & !(1 << bit))?;
+
+		Ok(16)
+	}
 }
 
 use util::*;
+
+/// Enter the given interrupt vector.
+pub fn enter_interrupt(cpu: &mut Cpu, int_vector: u16) -> InsnResult {
+	assert!(int_vector & 0xFF00 == 0);
+
+	let cycles = push_nn(cpu, Register::PC)? + 8;
+
+	// Disable interrupts, takes 4 cycles
+	cpu.registers.set_ime(false);
+
+	// Jump to the interrupt vector, takes 4 cycles.
+	cpu.registers.set(Register::PC, int_vector);
+
+	Ok(cycles)
+}
 
 /// nop
 pub fn opcode_00(_cpu: &mut Cpu) -> InsnResult {
@@ -180,6 +250,21 @@ pub fn opcode_01(cpu: &mut Cpu) -> InsnResult {
 /// ld (BC), A
 pub fn opcode_02(cpu: &mut Cpu) -> InsnResult {
 	store_register_into_mem(cpu, Register::BC, Register::A)
+}
+
+/// inc BC
+pub fn opcode_03(cpu: &mut Cpu) -> InsnResult {
+	alu16::inc_register(cpu, Register::BC)
+}
+
+/// inc B
+pub fn opcode_04(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::B)
+}
+
+/// dec B
+pub fn opcode_05(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::B)
 }
 
 /// ld B, n
@@ -203,6 +288,21 @@ pub fn opcode_0a(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::A, Register::BC)
 }
 
+/// dec BC
+pub fn opcode_0b(cpu: &mut Cpu) -> InsnResult {
+	alu16::dec_register(cpu, Register::BC)
+}
+
+/// inc C
+pub fn opcode_0c(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::C)
+}
+
+/// dec C
+pub fn opcode_0d(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::C)
+}
+
 /// ld C, n
 pub fn opcode_0e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::C)
@@ -218,14 +318,49 @@ pub fn opcode_12(cpu: &mut Cpu) -> InsnResult {
 	store_register_into_mem(cpu, Register::DE, Register::A)
 }
 
+/// inc DE
+pub fn opcode_13(cpu: &mut Cpu) -> InsnResult {
+	alu16::inc_register(cpu, Register::DE)
+}
+
+/// inc D
+pub fn opcode_14(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::D)
+}
+
+/// dec D
+pub fn opcode_15(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::D)
+}
+
 /// ld D, n
 pub fn opcode_16(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::D)
 }
 
+/// jr n
+pub fn opcode_18(cpu: &mut Cpu) -> InsnResult {
+	jump_relative(cpu)
+}
+
 /// ld A, (DE)
 pub fn opcode_1a(cpu: &mut Cpu) -> InsnResult {
 	load_mem_to_register(cpu, Register::A, Register::DE)
+}
+
+/// dec DE
+pub fn opcode_1b(cpu: &mut Cpu) -> InsnResult {
+	alu16::dec_register(cpu, Register::DE)
+}
+
+/// inc E
+pub fn opcode_1c(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::E)
+}
+
+/// dec E
+pub fn opcode_1d(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::E)
 }
 
 /// ld E, n
@@ -235,7 +370,7 @@ pub fn opcode_1e(cpu: &mut Cpu) -> InsnResult {
 
 /// jr NZ, n
 pub fn opcode_20(cpu: &mut Cpu) -> InsnResult {
-	jump_conditional(cpu, Flag::Z, false)
+	jump_relative_conditional(cpu, Flag::Z, false)
 }
 
 /// ld HL, nn
@@ -248,11 +383,32 @@ pub fn opcode_22(cpu: &mut Cpu) -> InsnResult {
 	let address = cpu.registers.get(Register::HL);
 	let value: u8 = cpu.registers.get(Register::A) as u8;
 
+	// TODO remove this!
+	#[cfg(feature = "debug")]
+	{
+		println!("Writing to 0x{:04x} value 0x{:02x}", address, value);
+	}
+
 	cpu.mmap.write(address, value)?;
 
 	cpu.registers.set(Register::HL, address.wrapping_add(1));
 
 	Ok(8)
+}
+
+/// inc HL
+pub fn opcode_23(cpu: &mut Cpu) -> InsnResult {
+	alu16::inc_register(cpu, Register::HL)
+}
+
+/// inc H
+pub fn opcode_24(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::H)
+}
+
+/// dec H
+pub fn opcode_25(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::H)
 }
 
 /// ld H, n
@@ -262,7 +418,7 @@ pub fn opcode_26(cpu: &mut Cpu) -> InsnResult {
 
 /// jr Z, n
 pub fn opcode_28(cpu: &mut Cpu) -> InsnResult {
-	jump_conditional(cpu, Flag::Z, true)
+	jump_relative_conditional(cpu, Flag::Z, true)
 }
 
 /// ld A, (HL+)
@@ -275,6 +431,21 @@ pub fn opcode_2a(cpu: &mut Cpu) -> InsnResult {
 	Ok(8)
 }
 
+/// dec HL
+pub fn opcode_2b(cpu: &mut Cpu) -> InsnResult {
+	alu16::dec_register(cpu, Register::HL)
+}
+
+/// inc L
+pub fn opcode_2c(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::L)
+}
+
+/// dec L
+pub fn opcode_2d(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::L)
+}
+
 /// ld L, n
 pub fn opcode_2e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::L)
@@ -282,7 +453,7 @@ pub fn opcode_2e(cpu: &mut Cpu) -> InsnResult {
 
 /// jr NC, n
 pub fn opcode_30(cpu: &mut Cpu) -> InsnResult {
-	jump_conditional(cpu, Flag::C, false)
+	jump_relative_conditional(cpu, Flag::C, false)
 }
 
 /// ld SP, nn
@@ -302,6 +473,21 @@ pub fn opcode_32(cpu: &mut Cpu) -> InsnResult {
 	Ok(8)
 }
 
+/// inc SP
+pub fn opcode_33(cpu: &mut Cpu) -> InsnResult {
+	alu16::inc_register(cpu, Register::SP)
+}
+
+/// inc (HL)
+pub fn opcode_34(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_mem(cpu)
+}
+
+/// dec (HL)
+pub fn opcode_35(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_mem(cpu)
+}
+
 /// ld (HL), n
 pub fn opcode_36(cpu: &mut Cpu) -> InsnResult {
 	let value: u8 = cpu.fetch()?;
@@ -314,7 +500,7 @@ pub fn opcode_36(cpu: &mut Cpu) -> InsnResult {
 
 /// jr C, n
 pub fn opcode_38(cpu: &mut Cpu) -> InsnResult {
-	jump_conditional(cpu, Flag::C, true)
+	jump_relative_conditional(cpu, Flag::C, true)
 }
 
 /// ld A, (HL-)
@@ -325,6 +511,21 @@ pub fn opcode_3a(cpu: &mut Cpu) -> InsnResult {
 	cpu.registers.set(Register::HL, address.wrapping_sub(1));
 
 	Ok(8)
+}
+
+/// dec SP
+pub fn opcode_3b(cpu: &mut Cpu) -> InsnResult {
+	alu16::dec_register(cpu, Register::SP)
+}
+
+/// inc A
+pub fn opcode_3c(cpu: &mut Cpu) -> InsnResult {
+	alu8::inc_register(cpu, Register::A)
+}
+
+/// dec A
+pub fn opcode_3d(cpu: &mut Cpu) -> InsnResult {
+	alu8::dec_register(cpu, Register::A)
 }
 
 /// ld A, #
@@ -810,6 +1011,46 @@ pub fn opcode_9f(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::sbc, cpu, Register::A, Register::A)
 }
 
+/// and A, B
+pub fn opcode_a0(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::B)
+}
+
+/// and A, C
+pub fn opcode_a1(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::C)
+}
+
+/// and A, D
+pub fn opcode_a2(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::D)
+}
+
+/// and A, E
+pub fn opcode_a3(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::E)
+}
+
+/// and A, H
+pub fn opcode_a4(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::H)
+}
+
+/// and A, L
+pub fn opcode_a5(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::L)
+}
+
+/// and A, (HL)
+pub fn opcode_a6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::and, cpu)
+}
+
+/// and A, A
+pub fn opcode_a7(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::and, cpu, Register::A, Register::A)
+}
+
 /// xor A, B
 pub fn opcode_a8(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::xor, cpu, Register::A, Register::B)
@@ -848,6 +1089,46 @@ pub fn opcode_ae(cpu: &mut Cpu) -> InsnResult {
 /// xor A, A
 pub fn opcode_af(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::xor, cpu, Register::A, Register::A)
+}
+
+/// or A, B
+pub fn opcode_b0(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::B)
+}
+
+/// or A, C
+pub fn opcode_b1(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::C)
+}
+
+/// or A, D
+pub fn opcode_b2(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::D)
+}
+
+/// or A, E
+pub fn opcode_b3(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::E)
+}
+
+/// or A, H
+pub fn opcode_b4(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::H)
+}
+
+/// or A, L
+pub fn opcode_b5(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::L)
+}
+
+/// or A, (HL)
+pub fn opcode_b6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_mem(alu8::or, cpu)
+}
+
+/// or A, A
+pub fn opcode_b7(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_registers(alu8::or, cpu, Register::A, Register::A)
 }
 
 /// cp A, B
@@ -890,9 +1171,19 @@ pub fn opcode_bf(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_registers(alu8::cp, cpu, Register::A, Register::A)
 }
 
+/// ret NZ
+pub fn opcode_c0(cpu: &mut Cpu) -> InsnResult {
+	ret_conditional(cpu, Flag::Z, false)
+}
+
 /// pop BC
 pub fn opcode_c1(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::BC)
+}
+
+/// jp NZ, nn
+pub fn opcode_c2(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::Z, false)
 }
 
 /// jp nn
@@ -918,6 +1209,23 @@ pub fn opcode_c6(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::add, cpu)
 }
 
+/// ret Z
+pub fn opcode_c8(cpu: &mut Cpu) -> InsnResult {
+	ret_conditional(cpu, Flag::Z, true)
+}
+
+/// ret
+pub fn opcode_c9(cpu: &mut Cpu) -> InsnResult {
+	pop_nn(cpu, Register::PC)?;
+
+	Ok(8)
+}
+
+/// jp Z, nn
+pub fn opcode_ca(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::Z, true)
+}
+
 /// call Z, nn
 pub fn opcode_cc(cpu: &mut Cpu) -> InsnResult {
 	call_conditional(cpu, Flag::Z, true)
@@ -938,14 +1246,34 @@ pub fn opcode_ce(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::adc, cpu)
 }
 
+/// ret NC
+pub fn opcode_d0(cpu: &mut Cpu) -> InsnResult {
+	ret_conditional(cpu, Flag::C, false)
+}
+
 /// pop DE
 pub fn opcode_d1(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::DE)
 }
 
+/// jp NC, nn
+pub fn opcode_d2(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::C, false)
+}
+
 /// call NC, nn
 pub fn opcode_d4(cpu: &mut Cpu) -> InsnResult {
 	call_conditional(cpu, Flag::C, false)
+}
+
+/// ret C
+pub fn opcode_d8(cpu: &mut Cpu) -> InsnResult {
+	ret_conditional(cpu, Flag::C, true)
+}
+
+/// jp C, nn
+pub fn opcode_da(cpu: &mut Cpu) -> InsnResult {
+	jump_conditional(cpu, Flag::C, true)
 }
 
 /// call C, nn
@@ -969,6 +1297,13 @@ pub fn opcode_e0(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = 0xFF00 | low_byte;
 
 	let value: u8 = cpu.registers.get(Register::A) as u8;
+
+	// TODO remove this!
+	#[cfg(feature = "debug")]
+	{
+		println!("Writing into 0x{:04x} value 0x{:02x}", address, value);
+	}
+
 	cpu.mmap.write(address, value)?;
 
 	Ok(12)
@@ -994,10 +1329,21 @@ pub fn opcode_e5(cpu: &mut Cpu) -> InsnResult {
 	push_nn(cpu, Register::HL)
 }
 
+/// and A, #
+pub fn opcode_e6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::and, cpu)
+}
+
 /// ld (nn), A
 pub fn opcode_ea(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = cpu.fetch::<u16>()?;
 	let value: u8 = cpu.registers.get(Register::A) as u8;
+
+	// TODO remove this!
+	#[cfg(feature = "debug")]
+	{
+		println!("Writing to 0x{:04x} value 0x{:02x}", address, value);
+	}
 
 	cpu.mmap.write(address, value)?;
 
@@ -1015,6 +1361,12 @@ pub fn opcode_f0(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = 0xFF00 | low_byte;
 
 	let value: u8 = cpu.mmap.read(address)?;
+
+	// TODO remove this!
+	#[cfg(feature = "debug")]
+	{
+		println!("Reading from 0x{:04x} value 0x{:02x}", address, value);
+	}
 
 	cpu.registers.set(Register::A, value as u16);
 
@@ -1049,21 +1401,24 @@ pub fn opcode_f5(cpu: &mut Cpu) -> InsnResult {
 	push_nn(cpu, Register::AF)
 }
 
+/// or A, #
+pub fn opcode_f6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::or, cpu)
+}
+
 /// ld HL, SP+n
-pub fn opcode_f8(_cpu: &mut Cpu) -> InsnResult {
-	// let offset: u8 = cpu.fetch()?;
-	// let sp = cpu.registers.get(Register::SP);
+pub fn opcode_f8(cpu: &mut Cpu) -> InsnResult {
+	let offset: u16 = cpu.fetch::<u8>()? as u16;
+	let sp = cpu.registers.get(Register::SP);
 
-	// cpu.registers.set(Register::HL, sp + (offset as u16));
+	let result = alu16::add(cpu, sp, offset);
 
-	// cpu.registers.set_flag(Flag::Z, false);
-	// cpu.registers.set_flag(Flag::N, false);
-	// // TODO set other flags
+	cpu.registers.set(Register::HL, result);
 
-	// Ok(8)
+	// According to the manual, this instruction always resets the zero flag.
+	cpu.registers.set_flag(Flag::Z, false);
 
-	// I'm considering using an ALU implementation instead.
-	unimplemented!();
+	Ok(12)
 }
 
 /// ld SP, HL
@@ -1092,4 +1447,355 @@ pub fn opcode_fb(cpu: &mut Cpu) -> InsnResult {
 /// cp A, #
 pub fn opcode_fe(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::cp, cpu)
+}
+
+/// res 0, B
+pub fn opcode_cb80(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 0)
+}
+
+/// res 0, C
+pub fn opcode_cb81(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 0)
+}
+
+/// res 0, D
+pub fn opcode_cb82(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 0)
+}
+
+/// res 0, E
+pub fn opcode_cb83(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 0)
+}
+
+/// res 0, H
+pub fn opcode_cb84(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 0)
+}
+
+/// res 0, L
+pub fn opcode_cb85(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 0)
+}
+
+/// res 0, (HL)
+pub fn opcode_cb86(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 0)
+}
+
+/// res 0, A
+pub fn opcode_cb87(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 0)
+}
+
+/// res 1, B
+pub fn opcode_cb88(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 1)
+}
+
+/// res 1, C
+pub fn opcode_cb89(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 1)
+}
+
+/// res 1, D
+pub fn opcode_cb8a(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 1)
+}
+
+/// res 1, E
+pub fn opcode_cb8b(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 1)
+}
+
+/// res 1, H
+pub fn opcode_cb8c(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 1)
+}
+
+/// res 1, L
+pub fn opcode_cb8d(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 1)
+}
+
+/// res 1, (HL)
+pub fn opcode_cb8e(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 1)
+}
+
+/// res 1, A
+pub fn opcode_cb8f(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 1)
+}
+
+/// res 2, B
+pub fn opcode_cb90(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 2)
+}
+
+/// res 2, C
+pub fn opcode_cb91(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 2)
+}
+
+/// res 2, D
+pub fn opcode_cb92(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 2)
+}
+
+/// res 2, E
+pub fn opcode_cb93(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 2)
+}
+
+/// res 2, H
+pub fn opcode_cb94(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 2)
+}
+
+/// res 2, L
+pub fn opcode_cb95(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 2)
+}
+
+/// res 2, (HL)
+pub fn opcode_cb96(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 2)
+}
+
+/// res 2, A
+pub fn opcode_cb97(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 2)
+}
+
+/// res 3, B
+pub fn opcode_cb98(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 3)
+}
+
+/// res 3, C
+pub fn opcode_cb99(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 3)
+}
+
+/// res 3, D
+pub fn opcode_cb9a(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 3)
+}
+
+/// res 3, E
+pub fn opcode_cb9b(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 3)
+}
+
+/// res 3, H
+pub fn opcode_cb9c(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 3)
+}
+
+/// res 3, L
+pub fn opcode_cb9d(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 3)
+}
+
+/// res 3, (HL)
+pub fn opcode_cb9e(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 3)
+}
+
+/// res 3, A
+pub fn opcode_cb9f(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 3)
+}
+
+/// res 4, B
+pub fn opcode_cba0(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 4)
+}
+
+/// res 4, C
+pub fn opcode_cba1(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 4)
+}
+
+/// res 4, D
+pub fn opcode_cba2(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 4)
+}
+
+/// res 4, E
+pub fn opcode_cba3(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 4)
+}
+
+/// res 4, H
+pub fn opcode_cba4(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 4)
+}
+
+/// res 4, L
+pub fn opcode_cba5(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 4)
+}
+
+/// res 4, (HL)
+pub fn opcode_cba6(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 4)
+}
+
+/// res 4, A
+pub fn opcode_cba7(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 4)
+}
+
+/// res 5, B
+pub fn opcode_cba8(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 5)
+}
+
+/// res 5, C
+pub fn opcode_cba9(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 5)
+}
+
+/// res 5, D
+pub fn opcode_cbaa(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 5)
+}
+
+/// res 5, E
+pub fn opcode_cbab(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 5)
+}
+
+/// res 5, H
+pub fn opcode_cbac(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 5)
+}
+
+/// res 5, L
+pub fn opcode_cbad(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 5)
+}
+
+/// res 5, (HL)
+pub fn opcode_cbae(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 5)
+}
+
+/// res 5, A
+pub fn opcode_cbaf(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 5)
+}
+
+/// res 6, B
+pub fn opcode_cbb0(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 6)
+}
+
+/// res 6, C
+pub fn opcode_cbb1(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 6)
+}
+
+/// res 6, D
+pub fn opcode_cbb2(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 6)
+}
+
+/// res 6, E
+pub fn opcode_cbb3(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 6)
+}
+
+/// res 6, H
+pub fn opcode_cbb4(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 6)
+}
+
+/// res 6, L
+pub fn opcode_cbb5(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 6)
+}
+
+/// res 6, (HL)
+pub fn opcode_cbb6(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 6)
+}
+
+/// res 6, A
+pub fn opcode_cbb7(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 6)
+}
+
+/// res 7, B
+pub fn opcode_cbb8(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::B, 7)
+}
+
+/// res 7, C
+pub fn opcode_cbb9(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::C, 7)
+}
+
+/// res 7, D
+pub fn opcode_cbba(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::D, 7)
+}
+
+/// res 7, E
+pub fn opcode_cbbb(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::E, 7)
+}
+
+/// res 7, H
+pub fn opcode_cbbc(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::H, 7)
+}
+
+/// res 7, L
+pub fn opcode_cbbd(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::L, 7)
+}
+
+/// res 7, (HL)
+pub fn opcode_cbbe(cpu: &mut Cpu) -> InsnResult {
+	reset_memory_bit(cpu, 7)
+}
+
+/// res 7, A
+pub fn opcode_cbbf(cpu: &mut Cpu) -> InsnResult {
+	reset_register_bit(cpu, Register::A, 7)
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub mod tests {
+	use super::*;
+
+	#[test]
+	fn test_push_pop() -> Result<(), GameboyError> {
+		super::super::tests::with_cpu(|cpu| {
+			// Move the program counter to the RAM bank.
+			cpu.registers.set(Register::PC, 0xA000);
+			cpu.registers.set(Register::BC, 0x1234);
+
+			// Write arbitrary data to the memory starting from the program counter.
+			let data: &[u8] = &[/* PUSH BC */ 0xc5,
+								/* POP BC  */ 0xc1];
+
+			cpu.mmap.cartridge.set_ram_enabled(true);
+			cpu.mmap.write_all(cpu.registers.get(Register::PC), data)?;
+
+			cpu.execute_single()?;
+			cpu.execute_single()?;
+
+			// Make sure BC contains the same value.
+			assert!(cpu.registers.get(Register::BC) == 0x1234);
+
+			Ok(())
+		})
+	}
+
 }

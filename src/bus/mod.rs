@@ -9,15 +9,19 @@ pub mod memory_range;
 pub mod cartridge;
 pub mod rtc;
 pub mod ram;
+pub mod ppu;
 pub mod io;
 
 use io::*;
 use ram::*;
+use ppu::*;
 use cartridge::*;
 use memory_range::*;
+use ppu::consts::{MMAP_IO_DISPLAY, MMAP_IO_PALETTES};
 
-use crate::config::Config;
 use crate::GameboyError;
+use crate::config::Config;
+use crate::cpu::interrupts::*;
 
 /// Bus locations-related constants.
 #[allow(missing_docs)]
@@ -63,8 +67,12 @@ pub trait Memory {
 /// This implementation provides memory/peripheral abstraction.
 pub struct SystemBus<'a> {
 	pub(crate) cartridge: &'a mut Cartridge<'a>,
-	pub(crate) io: IOPorts,
+	pub(crate) ppu: Ppu,
+	pub(crate) io: IoPorts,
 	pub(crate) ram: InternalRam,
+
+	/// The IF register.
+	pub interrupt_flag: InterruptMask,
 }
 
 /// An abstraction for fetching mutable and immutable regions.
@@ -79,11 +87,26 @@ macro_rules! get_region {
 				memory_range!(MMAP_RAM_BANK_SW) => {
 					Ok(&$($mut_)* (*self.cartridge))
 				}
+
 				// Internal RAM
 				memory_range!(MMAP_RAM_INTERNAL) |
-				memory_range!(MMAP_RAM_ECHO) => {
+				memory_range!(MMAP_RAM_ECHO) |
+				memory_range!(MMAP_RAM_HIGH) => {
 					Ok(&$($mut_)* self.ram)
 				}
+
+				// DMA
+				io::consts::IO_DMA => {
+					Ok(&$($mut_)* *self)
+				}
+
+				// Display
+				memory_range!(MMAP_IO_DISPLAY) |
+				memory_range!(MMAP_IO_PALETTES) |
+				memory_range!(MMAP_VIDEO_RAM) => {
+					Ok(&$($mut_)* self.ppu)
+				}
+
 				// I/O registers
 				memory_range!(MMAP_IO_PORTS) |
 				memory_range!(MMAP_INTERRUPT_EN) => {
@@ -102,9 +125,48 @@ impl<'a> SystemBus<'a> {
 	pub fn new(config: &'a Config, cartridge: &'a mut Cartridge<'a>) -> Self {
 		SystemBus {
 			cartridge,
-			io: IOPorts::new(config),
+			ppu: Ppu::new(),
+			io: IoPorts::new(config),
 			ram: InternalRam::new(),
+			interrupt_flag: 0,
 		}
+	}
+
+	/// Update the system bus peripehrals' state according to
+	/// the elapsed time.
+	pub fn process(&mut self, cycles: usize) {
+		self.ppu.process(cycles);
+
+		// Update interrupts state
+		self.interrupt_flag |= self.ppu.interrupts();
+		self.ppu.clear();
+	}
+
+	/// Handle reading from a memory region.
+	/// The function calls the relevent peripheral's implementation.
+	pub fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
+		let peripheral = self.region_mut(address)?;
+
+		peripheral.write(address, value)
+	}
+
+	/// Handle writing to a memory region.
+	/// The function calls the relevent peripheral's implementation.
+	pub fn read(&self, address: u16) -> Result<u8, GameboyError> {
+		let peripheral = self.region(address)?;
+		
+		peripheral.read(address)
+	}
+
+	/// Returns a waiting interrupt and removes it from the queue.
+	pub fn fetch_interrupt(&mut self) -> Option<Interrupt> {
+		let mut iter = InterruptIter::new(self.interrupt_flag);
+		let interrupt = iter.next();
+
+		// Remove the fetched interrupt (if any) from the interrupt register.
+		self.interrupt_flag = iter.mask;
+
+		interrupt
 	}
 
 	// Get an immutable region
@@ -114,21 +176,21 @@ impl<'a> SystemBus<'a> {
 	get_region!(region_mut, mut);
 }
 
-impl<'a> Memory for SystemBus<'a> {
-	/// Handle reading from a memory region.
-	/// The function calls the relevent peripheral's implementation.
-	fn write(&mut self, address: u16, value: u8) -> Result<(), GameboyError> {
-		let peripheral = self.region_mut(address)?;
+/// Certain registers needs access to multiple peripherals.
+/// These registers will be implemented here.
+mod private {
+	use super::*;
 
-		peripheral.write(address, value)
-	}
+	// Implement read/write operations for internal registers.
+	impl<'a> Memory for SystemBus<'a> {
 
-	/// Handle writing to a memory region.
-	/// The function calls the relevent peripheral's implementation.
-	fn read(&self, address: u16) -> Result<u8, GameboyError> {
-		let peripheral = self.region(address)?;
-		
-		peripheral.read(address)
+		fn write(&mut self, _address: u16, _value: u8) -> Result<(), GameboyError> {
+			panic!("<SystemBus as Memory>::write: DMA is currently unimplemented.");
+		}
+
+		fn read(&self, _address: u16) -> Result<u8, GameboyError> {
+			panic!("<SystemBus as Memory>::read: DMA is currently unimplemented.");
+		}
 	}
 }
 
