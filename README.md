@@ -1,4 +1,6 @@
-# Rust Gameboy emulation library
+# Rust Gameboy emulation crate
+
+[![Build](https://github.com/nirhaike/rust-gameboy/actions/workflows/build.yml/badge.svg)](https://github.com/nirhaike/rust-gameboy/actions/workflows/build.yml)
 
 A rust crate that emulates the GameBoy/GameBoy Color's Z80-like CPU and it's peripherals, without using rust's standard library (making it suitable for embedded environments).
 
