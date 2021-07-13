@@ -397,6 +397,13 @@ mod util {
 
 		Ok(16)
 	}
+
+	pub fn restart(cpu: &mut Cpu, rst_vector: u16) -> InsnResult {
+		push_nn(cpu, Register::PC)?;
+		cpu.registers.set(Register::PC, rst_vector);
+
+		Ok(32)
+	}
 }
 
 use util::*;
@@ -1461,6 +1468,11 @@ pub fn opcode_c6(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::add, cpu)
 }
 
+/// rst 00h
+pub fn opcode_c7(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x00)
+}
+
 /// ret Z
 pub fn opcode_c8(cpu: &mut Cpu) -> InsnResult {
 	ret_conditional(cpu, Flag::Z, true)
@@ -1498,6 +1510,11 @@ pub fn opcode_ce(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::adc, cpu)
 }
 
+/// rst 08h
+pub fn opcode_cf(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x08)
+}
+
 /// ret NC
 pub fn opcode_d0(cpu: &mut Cpu) -> InsnResult {
 	ret_conditional(cpu, Flag::C, false)
@@ -1528,6 +1545,11 @@ pub fn opcode_d6(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::sub, cpu)
 }
 
+/// rst 10h
+pub fn opcode_d7(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x10)
+}
+
 /// ret C
 pub fn opcode_d8(cpu: &mut Cpu) -> InsnResult {
 	ret_conditional(cpu, Flag::C, true)
@@ -1555,6 +1577,11 @@ pub fn opcode_dc(cpu: &mut Cpu) -> InsnResult {
 /// sbc A, #
 pub fn opcode_de(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::sbc, cpu)
+}
+
+/// rst 18h
+pub fn opcode_df(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x18)
 }
 
 /// ld (n), A
@@ -1600,6 +1627,11 @@ pub fn opcode_e6(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::and, cpu)
 }
 
+/// rst 20h
+pub fn opcode_e7(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x20)
+}
+
 /// jp (HL)
 pub fn opcode_e9(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = cpu.registers.get(Register::HL);
@@ -1628,6 +1660,11 @@ pub fn opcode_ea(cpu: &mut Cpu) -> InsnResult {
 /// xor A, #
 pub fn opcode_ee(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::xor, cpu)
+}
+
+/// rst 28h
+pub fn opcode_ef(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x28)
 }
 
 /// ldh A, (n)
@@ -1680,6 +1717,11 @@ pub fn opcode_f6(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::or, cpu)
 }
 
+/// rst 30h
+pub fn opcode_f7(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x30)
+}
+
 /// ld HL, SP+n
 pub fn opcode_f8(cpu: &mut Cpu) -> InsnResult {
 	let offset: u16 = cpu.fetch::<u8>()? as u16;
@@ -1720,6 +1762,11 @@ pub fn opcode_fb(cpu: &mut Cpu) -> InsnResult {
 /// cp A, #
 pub fn opcode_fe(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::cp, cpu)
+}
+
+/// rst 38h
+pub fn opcode_ff(cpu: &mut Cpu) -> InsnResult {
+	restart(cpu, 0x38)
 }
 
 /// rlc B

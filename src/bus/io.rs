@@ -15,7 +15,7 @@ pub mod consts {
 	use super::*;
 
 	/// The total size of the registers' memory mapping.
-	pub const IO_SIZE: usize = 0x4C;
+	pub const IO_SIZE: usize = 0x80;
 
 	pub const IO_P1: u16 = 0xFF00;
 	pub const IO_SB: u16 = 0xFF01;

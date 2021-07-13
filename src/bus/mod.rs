@@ -44,7 +44,7 @@ pub mod consts {
 	pub const MMAP_RAM_ECHO: MemoryRange = make_range!(0xE000, 0xFDFF);
 	/// Sprite/Object attribute memory.
 	pub const MMAP_SPRITE_OAM: MemoryRange = make_range!(0xFE00, 0xFE9F);
-	pub const MMAP_IO_PORTS: MemoryRange = make_range!(0xFF00, 0xFF4B);
+	pub const MMAP_IO_PORTS: MemoryRange = make_range!(0xFF00, 0xFF7F);
 	/// High RAM.
 	pub const MMAP_RAM_HIGH: MemoryRange = make_range!(0xFF80, 0xFFFE);
 }
