@@ -131,7 +131,7 @@ pub mod alu8 {
 		cpu.registers.set_flag(Flag::Z, result == 0);
 		cpu.registers.set_flag(Flag::N, true);
 		cpu.registers.set_flag(Flag::H, (lhs & 0x0F) < (rhs & 0x0F) + (carry as u8));
-		cpu.registers.set_flag(Flag::C, (lhs as u16) < (rhs as u16) + carry);
+		cpu.registers.set_flag(Flag::C, (lhs as u16) < ((rhs as u16) + carry));
 
 		result
 	}
@@ -221,14 +221,77 @@ pub mod alu8 {
 		result
 	}
 
+	/// Rotates left the given register, possibly rotates the carry
+	/// flag too (if !carry, the carry flag will hold bit 7's result, but
+	/// bit 7 will move also to bit 0).
+	pub fn rotate_left(cpu: &mut Cpu, value: u8, carry: bool) -> u8 {
+		let old_carry = cpu.registers.flag(Flag::C);
+		let new_carry = (value & 0x80) != 0;
+
+		let mut result = value << 1;
+
+		if carry {
+			result |= if old_carry { 1 } else { 0 };
+		} else {
+			result |= if new_carry { 1 } else { 0 };
+		}
+
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, new_carry);
+
+		result
+	}
+
+	/// Shifts right the given register. If logic (not arithmetic),
+	/// the MSB shifts too, otherwise, the MSB stays the same.
+	pub fn shift_right(cpu: &mut Cpu, value: u8, logic: bool) -> u8 {
+		let old_msb = value & 0x80;
+		let new_carry = (value & 1) == 1;
+
+		let mut result: u8 = value >> 1;
+
+		if !logic {
+			result |= old_msb;
+		}
+
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, new_carry);
+
+		result
+	}
+
+	/// Shifts left the given register.
+	pub fn shift_left(cpu: &mut Cpu, value: u8) -> u8 {
+		let new_carry = (value & 0x80) != 0;
+
+		let result = value << 1;
+
+		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, false);
+		cpu.registers.set_flag(Flag::C, new_carry);
+
+		result
+	}
+
 	/// Increment the given 8-bit register.
 	pub fn inc_register(cpu: &mut Cpu, reg: Register) -> InsnResult {
 		assert!(get_type(&reg) != RegisterType::Wide);
+
+		// Save the current carry flag.
+		let old_carry = cpu.registers.flag(Flag::C);
 
 		let value: u8 = cpu.registers.get(reg) as u8;
 		let result: u8 = add(cpu, value, 1);
 
 		cpu.registers.set(reg, result as u16);
+
+		// Restore carry because inc shouldn't affect it.
+		cpu.registers.set_flag(Flag::C, old_carry);
 
 		Ok(4)
 	}
@@ -237,10 +300,16 @@ pub mod alu8 {
 	pub fn inc_mem(cpu: &mut Cpu) -> InsnResult {
 		let address = cpu.registers.get(Register::HL);
 
+		// Save the current carry flag.
+		let old_carry = cpu.registers.flag(Flag::C);
+
 		let value: u8 = cpu.mmap.read(address)?;
 		let result: u8 = add(cpu, value, 1);
 
 		cpu.mmap.write(address, result)?;
+
+		// Restore carry because inc shouldn't affect it.
+		cpu.registers.set_flag(Flag::C, old_carry);
 
 		Ok(12)
 	}
@@ -249,10 +318,16 @@ pub mod alu8 {
 	pub fn dec_register(cpu: &mut Cpu, reg: Register) -> InsnResult {
 		assert!(get_type(&reg) != RegisterType::Wide);
 
+		// Save the current carry flag.
+		let old_carry = cpu.registers.flag(Flag::C);
+
 		let value: u8 = cpu.registers.get(reg) as u8;
 		let result: u8 = sub(cpu, value, 1);
 
 		cpu.registers.set(reg, result as u16);
+
+		// Restore carry because dec shouldn't affect it.
+		cpu.registers.set_flag(Flag::C, old_carry);
 
 		Ok(4)
 	}
@@ -261,10 +336,16 @@ pub mod alu8 {
 	pub fn dec_mem(cpu: &mut Cpu) -> InsnResult {
 		let address = cpu.registers.get(Register::HL);
 
+		// Save the current carry flag.
+		let old_carry = cpu.registers.flag(Flag::C);
+
 		let value: u8 = cpu.mmap.read(address)?;
 		let result: u8 = sub(cpu, value, 1);
 
 		cpu.mmap.write(address, result)?;
+
+		// Restore carry because dec shouldn't affect it.
+		cpu.registers.set_flag(Flag::C, old_carry);
 
 		Ok(12)
 	}
@@ -343,6 +424,22 @@ pub mod alu16 {
 
 		// Set the relevant flags
 		cpu.registers.set_flag(Flag::Z, result == 0);
+		cpu.registers.set_flag(Flag::N, false);
+		cpu.registers.set_flag(Flag::H, result_16 > 0x0FFF);
+		cpu.registers.set_flag(Flag::C, result_32 > 0xFFFF);
+
+		result
+	}
+
+	/// Adds the given arguments, sets the relevant flags accordinately and returns the result.
+	/// In this operation, the zero flag is not affected.
+	pub fn add_hl(cpu: &mut Cpu, lhs: u16, rhs: u16) -> u16 {
+		let result_32 = (lhs as u32).wrapping_add(rhs as u32);
+		let result_16 = (lhs & 0x0FFF).wrapping_add(rhs & 0x0FFF);
+
+		let result: u16 = (result_32 & 0xFFFF) as u16;
+
+		// Set the relevant flags (the zero flag is not affected)
 		cpu.registers.set_flag(Flag::N, false);
 		cpu.registers.set_flag(Flag::H, result_16 > 0x0FFF);
 		cpu.registers.set_flag(Flag::C, result_32 > 0xFFFF);

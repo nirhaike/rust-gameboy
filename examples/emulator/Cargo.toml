@@ -1,9 +1,0 @@
-[package]
-name = "emulator"
-version = "0.1.0"
-authors = ["Nir H."]
-edition = "2018"
-
-[dependencies]
-gameboy-core = { path = "../..", features = ["debug"]}
-minifb = "0.19.3"

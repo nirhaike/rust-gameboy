@@ -19,9 +19,11 @@ use state::*;
 use state::registers::*;
 use instructions::{Instruction, enter_interrupt};
 
-use crate::bus::*;
 use crate::GameboyError;
 use crate::config::Config;
+use crate::bus::joypad::Controller;
+
+use crate::bus::*;
 use crate::bus::cartridge::*;
 use crate::cpu::interrupts::*;
 
@@ -39,7 +41,16 @@ pub struct Cpu<'a> {
 	/// The emulator's configuration
 	pub config: &'a Config,
 
-	halted: bool,
+	/// TODO
+	pub halting: bool,
+	/// If we halt the cpu when interrupts are disabled, the original cpu had a bug
+	/// in which it fetches the byte after the halt twice.
+	halt_bug: bool,
+	/// The processor has a delay of a single instruction after EI before actually
+	/// enabling interrupts.
+	ime_delay: bool,
+	/// TODO remove this.
+	countdown: usize,
 }
 
 impl<'a> Cpu<'a> {
@@ -50,13 +61,31 @@ impl<'a> Cpu<'a> {
 			registers: CpuState::new(config),
 			mmap: SystemBus::new(&config, cartridge),
 			config,
-			halted: false,
+			halting: false,
+			halt_bug: false,
+			ime_delay: false,
+			countdown: 0,
 		}
 	}
 
 	/// Halt the cpu.
 	pub fn halt(&mut self) {
-		self.halted = true;
+		self.halting = true;
+
+		if !self.registers.ime() {
+			self.halt_bug = true;
+		}
+	}
+
+	/// Enable interrupts with a delay of a single instruction.
+	pub fn toggle_ime_delayed(&mut self) {
+		self.ime_delay = true;
+	}
+
+	/// Apply the given closure to the game controller.
+	pub fn with_controller<F>(&mut self, closure: F)
+		where F: FnOnce(&mut dyn Controller) -> () {
+			closure(&mut self.mmap.joypad);
 	}
 
 	/// Reads the next instruction bytes and increments the program counter appropriately.
@@ -74,11 +103,21 @@ impl<'a> Cpu<'a> {
 			// We're using little-endianity.
 			result += data << num::cast::<usize, T>(8 * i).unwrap();
 
-			// Move the PC forward.
-			self.registers.set(Register::PC, pc + 1);
+			if self.halt_bug {
+				// The halt bug prevents the program counter from being incremented once.
+				self.halt_bug = false;
+			} else {
+				// Move the PC forward.
+				self.registers.set(Register::PC, pc + 1);
+			}
 		}
 
 		Ok(result)
+	}
+
+	/// Writes the display's data to the given frame buffer.
+	pub fn flush(&mut self, frame_buffer: &mut [u32]) {
+		self.mmap.ppu.flush(frame_buffer);
 	}
 
 	/// Emulates the execution of a single instruction.
@@ -89,8 +128,15 @@ impl<'a> Cpu<'a> {
 		// Enter an interrupt if any (and if interrupts are enabled).
 		let mut num_cycles = self.handle_interrupts()?;
 
-		if !self.halted {
+		if !self.halting {
 			num_cycles += self.execute_single()?;
+		} else {
+			num_cycles += 4;
+		}
+
+		// Enable interrupts if needed
+		if self.ime_delay {
+			self.registers.set_ime(true);
 		}
 
 		// Progress the peripherals.
@@ -105,6 +151,17 @@ impl<'a> Cpu<'a> {
 	pub fn execute_single(&mut self) -> Result<usize, GameboyError> {
 		let _address: u16 = self.registers.get(Register::PC);
 
+		if _address == 0x7db8 && self.countdown == 0 {
+			self.countdown = 2000;
+		}
+
+		if self.countdown > 0 {
+			self.countdown -= 1;
+			if self.countdown == 1 {
+				// panic!("SHET");
+			}
+		}
+
 		// Fetch the opcode from the memory.
 		let opcode: u8 = self.fetch()?;
 
@@ -118,20 +175,27 @@ impl<'a> Cpu<'a> {
 		}
 
 		// Decode the given opcode.
-		// let insn: &Instruction = self.decode(opcode)?;
 		let insn: Instruction = self.decode(opcode)?;
 
 		// Execute and return the number of cycles taken.
 		Ok(insn(self)?)
 	}
 
-	/// TODO
-	pub fn handle_interrupts(&mut self) -> Result<usize, GameboyError> {
+	fn handle_interrupts(&mut self) -> Result<usize, GameboyError> {
 		if !self.registers.ime() {
+			// Stop halting if there's any active interrupt.
+			// We wake the cpu in a case of an interrupt, but we won't
+			// enter the ISR if interrupts are disabled.
+			if self.halting && self.mmap.interrupt_flag != 0 {
+				self.halting = false;
+			}
 			return Ok(0);
 		}
 
 		if let Some(interrupt) = self.mmap.fetch_interrupt() {
+			// Stop halting (if relevant) and enter the ISR.
+			self.halting = false;
+
 			let isr = match interrupt {
 				Interrupt::VerticalBlank => 0x0040,
 				Interrupt::LcdStat => 0x0048,

@@ -12,6 +12,12 @@ default = ["alloc"]
 std = []
 alloc = []
 debug = []
+display = ["minifb"]
 
 [dependencies]
 num = "0.4"
+minifb = { version = "0.19.3", optional = true }
+
+[[example]]
+name = "emulator"
+required-features = ["display"]

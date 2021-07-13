@@ -40,7 +40,9 @@ pub mod consts {
 	pub const MMAP_IO_PALETTES: MemoryRange = make_range!(0xFF68, 0xFF6B);
 
 	pub const VRAM_SIZE: usize = 0x2000;
-	pub const OAM_SIZE: usize = 0x100;
+	pub const OAM_SIZE: usize = 0xa0;
+
+	pub const NUM_SPRITES: usize = 40;
 
 	pub const WIDTH: usize = 160;
 	pub const HEIGHT: usize = 144;
@@ -60,7 +62,7 @@ type Color = u32;
 
 /// The lcd controller peripheral has four states, and 154 cycles between
 /// these states corresponds to a single frame when the LCD is on.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub enum PpuMode {
 	Hblank,
@@ -75,7 +77,6 @@ pub struct Ppu {
 	buffer: [Color; WIDTH * HEIGHT],
 	vram: [u8; VRAM_SIZE],
 	oam: [u8; OAM_SIZE],
-	// TODO add canvas: Option<&mut [u8; ??]>
 
 	lcdc: Lcdc,
 	stat: Stat,
@@ -105,6 +106,13 @@ struct Stat {
 	signal: u8,
 	// Consists of bits 0-1 (RO).
 	mode: u8,
+}
+
+struct SpriteData {
+	x: u8,
+	y: u8,
+	tile_id: u8,
+	tile_attr: u8,
 }
 
 impl Ppu {
@@ -151,6 +159,11 @@ impl Ppu {
 		self.wx = 0x00;
 	}
 
+	/// Writes the display's output to the given frame buffer.
+	pub fn flush(&mut self, frame_buffer: &mut [u32]) {
+		frame_buffer.copy_from_slice(&self.buffer);
+	}
+
 	/// Getter for the OAM region's buffer.
 	pub fn oam(&mut self) -> &mut [u8] {
 		&mut self.oam
@@ -171,7 +184,7 @@ impl Ppu {
 				// Enter scanline if finished
 				if self.mode_counter >= 80 {
 					self.mode_counter -= 80;
-					self.mode = PpuMode::RenderLine;
+					self.set_mode(PpuMode::RenderLine);
 				}
 			}
 
@@ -179,7 +192,7 @@ impl Ppu {
 				if self.mode_counter >= 172 {
 					self.mode_counter -= 172;
 					self.render_line();
-					self.mode = PpuMode::Hblank;
+					self.set_mode(PpuMode::Hblank);
 
 					// Check if should prompt an interrupt when getting to Hblank mode.
 					if self.stat.hblank_check_enable() {
@@ -194,14 +207,18 @@ impl Ppu {
 					// Move to the next line
 					self.ly += 1;
 					// Set the concidence flag
-					self.stat.set_lyc_signal(self.lyc == self.ly);
+					self.refresh_lyc_signal();
 
 					if self.ly == 144 {
 						// Start V-Blank.
-						self.mode = PpuMode::Vblank;
+						self.set_mode(PpuMode::Vblank);
 						self.interrupt_flag |= Interrupt::VerticalBlank.value();
+						// Check if should prompt an interrupt when getting to V-blank mode.
+						if self.stat.vblank_check_enable() {
+							self.interrupt_flag |= Interrupt::LcdStat.value();
+						}
 					} else {
-						self.mode = PpuMode::SearchOam;
+						self.set_mode(PpuMode::SearchOam);
 					}
 				}
 			}
@@ -211,14 +228,14 @@ impl Ppu {
 					self.mode_counter -= 456;
 					// Move to the next line
 					self.ly += 1;
-					self.stat.set_lyc_signal(self.lyc == self.ly);
+					self.refresh_lyc_signal();
 
 					// TODO Make sure that it's actually 154 (it might be 153)
 					if self.ly == 154 {
 						// Start searching OAM
 						self.ly = 0;
-						self.stat.set_lyc_signal(self.lyc == self.ly);
-						self.mode = PpuMode::SearchOam;
+						self.refresh_lyc_signal();
+						self.set_mode(PpuMode::SearchOam);
 
 						// Check if should prompt an interrupt when getting to SearchOam mode.
 						if self.stat.oam_check_enable() {
@@ -230,9 +247,158 @@ impl Ppu {
 		}
 	}
 
+	fn set_mode(&mut self, mode: PpuMode) {
+		self.mode = mode;
+		self.stat.set_mode(mode);
+	}
+
+	fn refresh_lyc_signal(&mut self) {
+		self.stat.set_lyc_signal(self.lyc == self.ly);
+
+		if self.stat.signal != 0 && self.stat.lyc_check_enable() {
+			self.interrupt_flag |= Interrupt::LcdStat.value();
+		}
+	}
+
 	/// Perform the ppu's line rendering logic.
-	pub fn render_line(&mut self) {
-		// TODO implement this.
+	fn render_line(&mut self) {
+		let line_offset = (self.ly as usize) * WIDTH;
+
+		// Wipe the buffer's line
+		for x in 0..WIDTH {
+			self.buffer[line_offset + x] = PALETTE[0];
+		}
+
+		self.draw_bg();
+		self.draw_sprites();
+	}
+
+	fn draw_bg(&mut self) {
+		if !self.lcdc.bg_enable() && !self.lcdc.window_enable() {
+			return;
+		}
+
+		// Calculate the offset of the current height in the frame buffer.
+		let line_offset = (self.ly as usize) * WIDTH;
+
+		// Select between displaying window or background.
+		let show_window = self.lcdc.window_enable() && self.wy < self.ly;
+
+		let wx = self.wx.wrapping_sub(7);
+		let screen_y = if show_window { self.ly.wrapping_sub(self.wy) } else { self.scy.wrapping_add(self.ly) };
+		let tile_y = ((screen_y as u16) >> 3) & 31;
+
+		// Iterate over the current line in the x-axis and draw the pixels.
+		for x in 0..WIDTH {
+			let screen_x = if show_window && x as u8 >= wx { x as u8 - wx } else { self.scx.wrapping_add(x as u8) };
+			let tile_x = ((screen_x as u16) >> 3) & 31;
+
+			// Get the base offset of the background.
+			let base_offset = [0x1800, 0x1c00][
+				if show_window && x as u8 >= wx {
+					if self.lcdc.window_tilemap() { 1 } else { 0 }
+				} else if self.lcdc.bg_tilemap() {
+					1
+				} else {
+					0
+				}];
+
+			// The tile takes 2 bytes for each line.
+			let tile_number_offset = (base_offset + tile_y * 32 + tile_x) as usize;
+			let tile_number = self.vram[tile_number_offset];
+			let tile_offset = if self.lcdc.tileset() {
+				tile_number as usize
+			} else {
+				((tile_number as i8) as usize).wrapping_add(128)
+			} as usize * 16;
+
+			let tileset_select = if self.lcdc.tileset() { 0 } else { 0x800 };
+			let tile_data_offset = (tileset_select + tile_offset) as usize + (screen_y as usize % 8) * 2;
+			let tile_data = &self.vram[tile_data_offset..tile_data_offset+2];
+
+			let tile_x = screen_x % 8;
+
+			// Get the color from the background's palette.
+			let color_low = if tile_data[0] & (0x80 >> tile_x) != 0 { 1 } else { 0 };
+			let color_high = if tile_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
+			let color_index = color_high | color_low;
+
+			let color = Ppu::get_color(self.bgp, color_index);
+			self.buffer[line_offset + x] = PALETTE[color];
+		}
+	}
+
+	fn draw_sprites(&mut self) {
+		let line_offset = (self.ly as usize) * WIDTH;
+		// Determine the sprite height (width is always 8)
+		let sprite_height = if self.lcdc.sprite_size() { 16 } else { 8 };
+
+		for i in 0..NUM_SPRITES {
+			let sprite_addr = (i as usize) * 4;
+			let sprite_data = SpriteData::new(&self.oam[sprite_addr..sprite_addr+4],
+											  self.lcdc.sprite_size());
+
+			// Check whether the sprite is out of bounds
+			let oob_x = sprite_data.x >= (WIDTH as u8) && sprite_data.x <= (0xff - 7);
+			let oob_ly_down = self.ly < sprite_data.y || self.ly > sprite_data.y.wrapping_add(sprite_height).wrapping_sub(1);
+			let oob_ly_up = self.ly > sprite_data.y.wrapping_add(sprite_height).wrapping_sub(1);
+			let sprite_wrapping_y = sprite_data.y > 0xff - sprite_height + 1;
+
+			// Continue if the sprite is not relevant for the current line.
+			if oob_x ||
+			   (sprite_wrapping_y && oob_ly_up) ||
+			   (!sprite_wrapping_y && oob_ly_down) {
+				continue;
+			}
+
+			let tile_y = if sprite_data.flip_y() {
+				sprite_height - 1 - self.ly.wrapping_sub(sprite_data.y)
+			} else {
+				self.ly.wrapping_sub(sprite_data.y)
+			};
+
+			// The tile takes 2 bytes for each line.
+			let tile_data_offset = (sprite_data.tile_id as usize) * 16 + (tile_y as usize) * 2;
+			let tile_data = &self.vram[tile_data_offset..tile_data_offset+2];
+
+			// Draw the relevant pixels in the current line.
+			for x in 0..8 {
+				let pixel_x = sprite_data.x.wrapping_add(x);
+				let tile_x = if sprite_data.flip_x() { 7 - x } else { x };
+
+				let color_low = if tile_data[0] & (0x80 >> tile_x) != 0 { 1 } else { 0 };
+				let color_high = if tile_data[1] & (0x80 >> tile_x) != 0 { 2 } else { 0 };
+				let color_index = color_high | color_low;
+
+				// Don't draw invisible and off-screen pixels.
+				if color_index == 0 || pixel_x >= (WIDTH as u8) {
+					continue;
+				}
+
+				let active_palette = if sprite_data.palette_select() {
+					self.obp1
+				} else {
+					self.obp0
+				};
+				let color = Ppu::get_color(active_palette, color_index);
+
+				// Draw the pixel
+				let offset = line_offset + sprite_data.x.wrapping_add(x) as usize;
+
+				if !sprite_data.sprite_behind() || self.buffer[offset] != PALETTE[0] {
+					self.buffer[offset] = PALETTE[color];
+				}
+			}
+		}
+	}
+
+	fn get_color(palette: u8, color: u8) -> usize {
+		match palette >> (2 * color) & 0x03 {
+			0x00 => 3,
+			0x01 => 2,
+			0x02 => 1,
+			_ => 0,
+		}
 	}
 }
 
@@ -382,7 +548,7 @@ impl Stat {
 	}
 
 	pub fn set_lyc_signal(&mut self, value: bool) {
-		self.signal = value.into();
+		self.signal = (value as u8) << 2;
 	}
 
 	pub fn set_mode(&mut self, mode: PpuMode) {
@@ -399,6 +565,36 @@ impl Stat {
 	}
 
 	pub fn read(&self) -> u8 {
-		self.data | self.signal | self.mode
+		// Bit 7 is unused and always returns 1.
+		self.data | self.signal | self.mode | 0x80
+	}
+}
+
+impl SpriteData {
+	pub fn new(data: &[u8], sprite_size: bool) -> Self {
+		assert!(data.len() == 4);
+
+		SpriteData {
+			x: data[1].wrapping_sub(8),
+			y: data[0].wrapping_sub(16),
+			tile_id: data[2] & if sprite_size { 0xfe } else { 0xff },
+			tile_attr: data[3],
+		}
+	}
+
+	pub fn palette_select(&self) -> bool {
+		self.tile_attr & (1 << 4) != 0
+	}
+
+	pub fn flip_x(&self) -> bool {
+		self.tile_attr & (1 << 5) != 0
+	}
+
+	pub fn flip_y(&self) -> bool {
+		self.tile_attr & (1 << 6) != 0
+	}
+
+	pub fn sprite_behind(&self) -> bool {
+		self.tile_attr & (1 << 7) != 0
 	}
 }

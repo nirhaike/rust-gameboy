@@ -249,6 +249,28 @@ mod util {
 		Ok(16)
 	}
 
+	/// Sets the given bit of the given 8-bit register.
+	pub fn set_register_bit(cpu: &mut Cpu,
+					 reg: Register,
+					 bit: u8) -> InsnResult {
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let data = cpu.registers.get(reg);
+		cpu.registers.set(reg, data | (1 << bit));
+
+		Ok(8)
+	}
+
+	/// Sets the given bit of the memory location pointer by (HL).
+	pub fn set_memory_bit(cpu: &mut Cpu, bit: u8) -> InsnResult {
+		let address = cpu.registers.get(Register::HL);
+		let data = cpu.mmap.read(address)?;
+
+		cpu.mmap.write(address, data | (1 << bit))?;
+
+		Ok(16)
+	}
+
 	/// Swaps the nibbles of the given register.
 	pub fn swap_register(cpu: &mut Cpu,
 						 reg: Register) -> InsnResult {
@@ -281,7 +303,7 @@ mod util {
 	/// Rotates right the given memory data pointed by HL, possibly rotates
 	/// the carry flag too.
 	pub fn rotate_right_memory(cpu: &mut Cpu,
-								 carry: bool) -> InsnResult {
+							   carry: bool) -> InsnResult {
 		let address = cpu.registers.get(Register::HL);
 		let data = cpu.mmap.read(address)?;
 
@@ -289,7 +311,91 @@ mod util {
 
 		cpu.mmap.write(address, result)?;
 
+		Ok(16)
+	}
+
+	/// Rotates left the given register, possibly rotates the carry
+	/// flag too.
+	pub fn rotate_left_register(cpu: &mut Cpu,
+								reg: Register,
+								carry: bool) -> InsnResult {
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let data = cpu.registers.get(reg) as u8;
+
+		let result = alu8::rotate_left(cpu, data, carry);
+
+		cpu.registers.set(reg, result as u16);
+
 		Ok(8)
+	}
+
+	/// Rotates left the given memory data pointed by HL, possibly rotates
+	/// the carry flag too.
+	pub fn rotate_left_memory(cpu: &mut Cpu,
+							  carry: bool) -> InsnResult {
+		let address = cpu.registers.get(Register::HL);
+		let data = cpu.mmap.read(address)?;
+
+		let result = alu8::rotate_left(cpu, data, carry);
+
+		cpu.mmap.write(address, result)?;
+
+		Ok(16)
+	}
+
+	/// Shifts right the given register.
+	pub fn shift_right_register(cpu: &mut Cpu,
+								 reg: Register,
+								 logic: bool) -> InsnResult {
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let data = cpu.registers.get(reg) as u8;
+
+		let result = alu8::shift_right(cpu, data, logic);
+
+		cpu.registers.set(reg, result as u16);
+
+		Ok(8)
+	}
+
+	/// Shifts right the given memory data pointed by HL.
+	pub fn shift_right_memory(cpu: &mut Cpu,
+							  logic: bool) -> InsnResult {
+		let address = cpu.registers.get(Register::HL);
+		let data = cpu.mmap.read(address)?;
+
+		let result = alu8::shift_right(cpu, data, logic);
+
+		cpu.mmap.write(address, result)?;
+
+		Ok(16)
+	}
+
+	/// Shifts left the given register.
+	pub fn shift_left_register(cpu: &mut Cpu,
+							   reg: Register) -> InsnResult {
+		assert!(get_type(&reg) != RegisterType::Wide);
+
+		let data = cpu.registers.get(reg) as u8;
+
+		let result = alu8::shift_left(cpu, data);
+
+		cpu.registers.set(reg, result as u16);
+
+		Ok(8)
+	}
+
+	/// Shifts left the given memory data pointed by HL.
+	pub fn shift_left_memory(cpu: &mut Cpu) -> InsnResult {
+		let address = cpu.registers.get(Register::HL);
+		let data = cpu.mmap.read(address)?;
+
+		let result = alu8::shift_left(cpu, data);
+
+		cpu.mmap.write(address, result)?;
+
+		Ok(16)
 	}
 }
 
@@ -345,6 +451,11 @@ pub fn opcode_06(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::B)
 }
 
+/// rlca
+pub fn opcode_07(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::A, false)
+}
+
 /// ld (nn), SP
 pub fn opcode_08(cpu: &mut Cpu) -> InsnResult {
 	let address: u16 = cpu.fetch()?;
@@ -358,7 +469,7 @@ pub fn opcode_08(cpu: &mut Cpu) -> InsnResult {
 
 /// add HL, BC
 pub fn opcode_09(cpu: &mut Cpu) -> InsnResult {
-	alu16::op_registers(alu16::add, cpu, Register::HL, Register::BC)
+	alu16::op_registers(alu16::add_hl, cpu, Register::HL, Register::BC)
 }
 
 /// ld A, (BC)
@@ -384,6 +495,11 @@ pub fn opcode_0d(cpu: &mut Cpu) -> InsnResult {
 /// ld C, n
 pub fn opcode_0e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::C)
+}
+
+/// rrca
+pub fn opcode_0f(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::A, false)
 }
 
 /// ld DE, nn
@@ -416,6 +532,11 @@ pub fn opcode_16(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::D)
 }
 
+/// rla
+pub fn opcode_17(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::A, true)
+}
+
 /// jr n
 pub fn opcode_18(cpu: &mut Cpu) -> InsnResult {
 	jump_relative(cpu)
@@ -423,7 +544,7 @@ pub fn opcode_18(cpu: &mut Cpu) -> InsnResult {
 
 /// add HL, DE
 pub fn opcode_19(cpu: &mut Cpu) -> InsnResult {
-	alu16::op_registers(alu16::add, cpu, Register::HL, Register::DE)
+	alu16::op_registers(alu16::add_hl, cpu, Register::HL, Register::DE)
 }
 
 /// ld A, (DE)
@@ -450,6 +571,12 @@ pub fn opcode_1d(cpu: &mut Cpu) -> InsnResult {
 pub fn opcode_1e(cpu: &mut Cpu) -> InsnResult {
 	load_imm8_to_register(cpu, Register::E)
 }
+
+/// rra
+pub fn opcode_1f(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::A, true)
+}
+
 
 /// jr NZ, n
 pub fn opcode_20(cpu: &mut Cpu) -> InsnResult {
@@ -506,7 +633,7 @@ pub fn opcode_28(cpu: &mut Cpu) -> InsnResult {
 
 /// add HL, HL
 pub fn opcode_29(cpu: &mut Cpu) -> InsnResult {
-	alu16::op_registers(alu16::add, cpu, Register::HL, Register::HL)
+	alu16::op_registers(alu16::add_hl, cpu, Register::HL, Register::HL)
 }
 
 /// ld A, (HL+)
@@ -610,7 +737,7 @@ pub fn opcode_38(cpu: &mut Cpu) -> InsnResult {
 
 /// add HL, SP
 pub fn opcode_39(cpu: &mut Cpu) -> InsnResult {
-	alu16::op_registers(alu16::add, cpu, Register::HL, Register::SP)
+	alu16::op_registers(alu16::add_hl, cpu, Register::HL, Register::SP)
 }
 
 /// ld A, (HL-)
@@ -644,6 +771,14 @@ pub fn opcode_3e(cpu: &mut Cpu) -> InsnResult {
 	cpu.registers.set(Register::A, value as u16);
 
 	Ok(8)
+}
+
+/// ccf
+pub fn opcode_3f(cpu: &mut Cpu) -> InsnResult {
+	// Complement the carry flag.
+	cpu.registers.set_flag(Flag::C, !cpu.registers.flag(Flag::C));
+
+	Ok(4)
 }
 
 /// ld B, B
@@ -1383,6 +1518,16 @@ pub fn opcode_d4(cpu: &mut Cpu) -> InsnResult {
 	call_conditional(cpu, Flag::C, false)
 }
 
+/// push DE
+pub fn opcode_d5(cpu: &mut Cpu) -> InsnResult {
+	push_nn(cpu, Register::DE)
+}
+
+/// sub A, #
+pub fn opcode_d6(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::sub, cpu)
+}
+
 /// ret C
 pub fn opcode_d8(cpu: &mut Cpu) -> InsnResult {
 	ret_conditional(cpu, Flag::C, true)
@@ -1392,7 +1537,6 @@ pub fn opcode_d8(cpu: &mut Cpu) -> InsnResult {
 pub fn opcode_d9(cpu: &mut Cpu) -> InsnResult {
 	pop_nn(cpu, Register::PC)?;
 
-	// TODO add delay of one instruction before actually toggling the IME.
 	cpu.registers.set_ime(true);
 
 	Ok(8)
@@ -1408,14 +1552,9 @@ pub fn opcode_dc(cpu: &mut Cpu) -> InsnResult {
 	call_conditional(cpu, Flag::C, true)
 }
 
-/// push DE
-pub fn opcode_d5(cpu: &mut Cpu) -> InsnResult {
-	push_nn(cpu, Register::DE)
-}
-
-/// sub A, #
-pub fn opcode_d6(cpu: &mut Cpu) -> InsnResult {
-	alu8::op_imm(alu8::sub, cpu)
+/// sbc A, #
+pub fn opcode_de(cpu: &mut Cpu) -> InsnResult {
+	alu8::op_imm(alu8::sbc, cpu)
 }
 
 /// ld (n), A
@@ -1491,7 +1630,7 @@ pub fn opcode_ee(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::xor, cpu)
 }
 
-/// ld A, (n)
+/// ldh A, (n)
 pub fn opcode_f0(cpu: &mut Cpu) -> InsnResult {
 	let low_byte = cpu.fetch::<u8>()? as u16;
 	let address: u16 = 0xFF00 | low_byte;
@@ -1526,7 +1665,6 @@ pub fn opcode_f2(cpu: &mut Cpu) -> InsnResult {
 
 /// di
 pub fn opcode_f3(cpu: &mut Cpu) -> InsnResult {
-	// TODO add delay of one instruction before actually toggling the IME.
 	cpu.registers.set_ime(false);
 
 	Ok(4)
@@ -1574,8 +1712,7 @@ pub fn opcode_fa(cpu: &mut Cpu) -> InsnResult {
 
 /// ei
 pub fn opcode_fb(cpu: &mut Cpu) -> InsnResult {
-	// TODO add delay of one instruction before actually toggling the IME.
-	cpu.registers.set_ime(true);
+	cpu.toggle_ime_delayed();
 
 	Ok(4)
 }
@@ -1583,6 +1720,126 @@ pub fn opcode_fb(cpu: &mut Cpu) -> InsnResult {
 /// cp A, #
 pub fn opcode_fe(cpu: &mut Cpu) -> InsnResult {
 	alu8::op_imm(alu8::cp, cpu)
+}
+
+/// rlc B
+pub fn opcode_cb00(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::B, false)
+}
+
+/// rlc C
+pub fn opcode_cb01(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::C, false)
+}
+
+/// rlc D
+pub fn opcode_cb02(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::D, false)
+}
+
+/// rlc E
+pub fn opcode_cb03(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::E, false)
+}
+
+/// rlc H
+pub fn opcode_cb04(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::H, false)
+}
+
+/// rlc L
+pub fn opcode_cb05(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::L, false)
+}
+
+/// rlc (HL)
+pub fn opcode_cb06(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_memory(cpu, false)
+}
+
+/// rlc A
+pub fn opcode_cb07(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::A, false)
+}
+
+/// rrc B
+pub fn opcode_cb08(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::B, false)
+}
+
+/// rrc C
+pub fn opcode_cb09(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::C, false)
+}
+
+/// rrc D
+pub fn opcode_cb0a(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::D, false)
+}
+
+/// rrc E
+pub fn opcode_cb0b(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::E, false)
+}
+
+/// rrc H
+pub fn opcode_cb0c(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::H, false)
+}
+
+/// rrc L
+pub fn opcode_cb0d(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::L, false)
+}
+
+/// rrc (HL)
+pub fn opcode_cb0e(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_memory(cpu, false)
+}
+
+/// rrc A
+pub fn opcode_cb0f(cpu: &mut Cpu) -> InsnResult {
+	rotate_right_register(cpu, Register::A, false)
+}
+
+/// rl B
+pub fn opcode_cb10(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::B, true)
+}
+
+/// rl C
+pub fn opcode_cb11(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::C, true)
+}
+
+/// rl D
+pub fn opcode_cb12(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::D, true)
+}
+
+/// rl E
+pub fn opcode_cb13(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::E, true)
+}
+
+/// rl H
+pub fn opcode_cb14(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::H, true)
+}
+
+/// rl L
+pub fn opcode_cb15(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::L, true)
+}
+
+/// rl (HL)
+pub fn opcode_cb16(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_memory(cpu, true)
+}
+
+/// rl A
+pub fn opcode_cb17(cpu: &mut Cpu) -> InsnResult {
+	rotate_left_register(cpu, Register::A, true)
 }
 
 /// rr B
@@ -1622,7 +1879,87 @@ pub fn opcode_cb1e(cpu: &mut Cpu) -> InsnResult {
 
 /// rr A
 pub fn opcode_cb1f(cpu: &mut Cpu) -> InsnResult {
-	rotate_right_register(cpu, Register::L, true)
+	rotate_right_register(cpu, Register::A, true)
+}
+
+/// sla B
+pub fn opcode_cb20(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::B)
+}
+
+/// sla C
+pub fn opcode_cb21(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::C)
+}
+
+/// sla D
+pub fn opcode_cb22(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::D)
+}
+
+/// sla E
+pub fn opcode_cb23(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::E)
+}
+
+/// sla H
+pub fn opcode_cb24(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::H)
+}
+
+/// sla L
+pub fn opcode_cb25(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::L)
+}
+
+/// sla (HL)
+pub fn opcode_cb26(cpu: &mut Cpu) -> InsnResult {
+	shift_left_memory(cpu)
+}
+
+/// sla A
+pub fn opcode_cb27(cpu: &mut Cpu) -> InsnResult {
+	shift_left_register(cpu, Register::A)
+}
+
+/// sra B
+pub fn opcode_cb28(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::B, false)
+}
+
+/// sra C
+pub fn opcode_cb29(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::C, false)
+}
+
+/// sra D
+pub fn opcode_cb2a(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::D, false)
+}
+
+/// sra E
+pub fn opcode_cb2b(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::E, false)
+}
+
+/// sra H
+pub fn opcode_cb2c(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::H, false)
+}
+
+/// sra L
+pub fn opcode_cb2d(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::L, false)
+}
+
+/// sra (HL)
+pub fn opcode_cb2e(cpu: &mut Cpu) -> InsnResult {
+	shift_right_memory(cpu, false)
+}
+
+/// sra A
+pub fn opcode_cb2f(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::A, false)
 }
 
 /// swap B
@@ -1670,6 +2007,46 @@ pub fn opcode_cb36(cpu: &mut Cpu) -> InsnResult {
 /// swap A
 pub fn opcode_cb37(cpu: &mut Cpu) -> InsnResult {
 	swap_register(cpu, Register::A)
+}
+
+/// srl B
+pub fn opcode_cb38(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::B, true)
+}
+
+/// srl C
+pub fn opcode_cb39(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::C, true)
+}
+
+/// srl D
+pub fn opcode_cb3a(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::D, true)
+}
+
+/// srl E
+pub fn opcode_cb3b(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::E, true)
+}
+
+/// srl H
+pub fn opcode_cb3c(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::H, true)
+}
+
+/// srl L
+pub fn opcode_cb3d(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::L, true)
+}
+
+/// srl (HL)
+pub fn opcode_cb3e(cpu: &mut Cpu) -> InsnResult {
+	shift_right_memory(cpu, true)
+}
+
+/// srl A
+pub fn opcode_cb3f(cpu: &mut Cpu) -> InsnResult {
+	shift_right_register(cpu, Register::A, true)
 }
 
 /// bit 0, B
@@ -2312,6 +2689,326 @@ pub fn opcode_cbbf(cpu: &mut Cpu) -> InsnResult {
 	reset_register_bit(cpu, Register::A, 7)
 }
 
+/// set 0, B
+pub fn opcode_cbc0(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 0)
+}
+
+/// set 0, C
+pub fn opcode_cbc1(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 0)
+}
+
+/// set 0, D
+pub fn opcode_cbc2(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 0)
+}
+
+/// set 0, E
+pub fn opcode_cbc3(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 0)
+}
+
+/// set 0, H
+pub fn opcode_cbc4(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 0)
+}
+
+/// set 0, L
+pub fn opcode_cbc5(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 0)
+}
+
+/// set 0, (HL)
+pub fn opcode_cbc6(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 0)
+}
+
+/// set 0, A
+pub fn opcode_cbc7(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 0)
+}
+
+/// set 1, B
+pub fn opcode_cbc8(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 1)
+}
+
+/// set 1, C
+pub fn opcode_cbc9(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 1)
+}
+
+/// set 1, D
+pub fn opcode_cbca(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 1)
+}
+
+/// set 1, E
+pub fn opcode_cbcb(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 1)
+}
+
+/// set 1, H
+pub fn opcode_cbcc(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 1)
+}
+
+/// set 1, L
+pub fn opcode_cbcd(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 1)
+}
+
+/// set 1, (HL)
+pub fn opcode_cbce(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 1)
+}
+
+/// set 1, A
+pub fn opcode_cbcf(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 1)
+}
+
+/// set 2, B
+pub fn opcode_cbd0(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 2)
+}
+
+/// set 2, C
+pub fn opcode_cbd1(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 2)
+}
+
+/// set 2, D
+pub fn opcode_cbd2(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 2)
+}
+
+/// set 2, E
+pub fn opcode_cbd3(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 2)
+}
+
+/// set 2, H
+pub fn opcode_cbd4(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 2)
+}
+
+/// set 2, L
+pub fn opcode_cbd5(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 2)
+}
+
+/// set 2, (HL)
+pub fn opcode_cbd6(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 2)
+}
+
+/// set 2, A
+pub fn opcode_cbd7(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 2)
+}
+
+/// set 3, B
+pub fn opcode_cbd8(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 3)
+}
+
+/// set 3, C
+pub fn opcode_cbd9(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 3)
+}
+
+/// set 3, D
+pub fn opcode_cbda(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 3)
+}
+
+/// set 3, E
+pub fn opcode_cbdb(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 3)
+}
+
+/// set 3, H
+pub fn opcode_cbdc(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 3)
+}
+
+/// set 3, L
+pub fn opcode_cbdd(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 3)
+}
+
+/// set 3, (HL)
+pub fn opcode_cbde(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 3)
+}
+
+/// set 3, A
+pub fn opcode_cbdf(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 3)
+}
+
+/// set 4, B
+pub fn opcode_cbe0(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 4)
+}
+
+/// set 4, C
+pub fn opcode_cbe1(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 4)
+}
+
+/// set 4, D
+pub fn opcode_cbe2(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 4)
+}
+
+/// set 4, E
+pub fn opcode_cbe3(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 4)
+}
+
+/// set 4, H
+pub fn opcode_cbe4(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 4)
+}
+
+/// set 4, L
+pub fn opcode_cbe5(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 4)
+}
+
+/// set 4, (HL)
+pub fn opcode_cbe6(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 4)
+}
+
+/// set 4, A
+pub fn opcode_cbe7(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 4)
+}
+
+/// set 5, B
+pub fn opcode_cbe8(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 5)
+}
+
+/// set 5, C
+pub fn opcode_cbe9(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 5)
+}
+
+/// set 5, D
+pub fn opcode_cbea(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 5)
+}
+
+/// set 5, E
+pub fn opcode_cbeb(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 5)
+}
+
+/// set 5, H
+pub fn opcode_cbec(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 5)
+}
+
+/// set 5, L
+pub fn opcode_cbed(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 5)
+}
+
+/// set 5, (HL)
+pub fn opcode_cbee(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 5)
+}
+
+/// set 5, A
+pub fn opcode_cbef(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 5)
+}
+
+/// set 6, B
+pub fn opcode_cbf0(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 6)
+}
+
+/// set 6, C
+pub fn opcode_cbf1(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 6)
+}
+
+/// set 6, D
+pub fn opcode_cbf2(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 6)
+}
+
+/// set 6, E
+pub fn opcode_cbf3(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 6)
+}
+
+/// set 6, H
+pub fn opcode_cbf4(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 6)
+}
+
+/// set 6, L
+pub fn opcode_cbf5(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 6)
+}
+
+/// set 6, (HL)
+pub fn opcode_cbf6(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 6)
+}
+
+/// set 6, A
+pub fn opcode_cbf7(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 6)
+}
+
+/// set 7, B
+pub fn opcode_cbf8(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::B, 7)
+}
+
+/// set 7, C
+pub fn opcode_cbf9(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::C, 7)
+}
+
+/// set 7, D
+pub fn opcode_cbfa(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::D, 7)
+}
+
+/// set 7, E
+pub fn opcode_cbfb(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::E, 7)
+}
+
+/// set 7, H
+pub fn opcode_cbfc(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::H, 7)
+}
+
+/// set 7, L
+pub fn opcode_cbfd(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::L, 7)
+}
+
+/// set 7, (HL)
+pub fn opcode_cbfe(cpu: &mut Cpu) -> InsnResult {
+	set_memory_bit(cpu, 7)
+}
+
+/// set 7, A
+pub fn opcode_cbff(cpu: &mut Cpu) -> InsnResult {
+	set_register_bit(cpu, Register::A, 7)
+}
+
 #[cfg(test)]
 #[allow(dead_code)]
 pub mod tests {
@@ -2324,7 +3021,7 @@ pub mod tests {
 			cpu.registers.set(Register::PC, 0xA000);
 			cpu.registers.set(Register::BC, 0x1234);
 
-			// Write arbitrary data to the memory starting from the program counter.
+			// Write the opcodes the memory starting from the program counter.
 			let data: &[u8] = &[/* PUSH BC */ 0xc5,
 								/* POP BC  */ 0xc1];
 
@@ -2336,6 +3033,50 @@ pub mod tests {
 
 			// Make sure BC contains the same value.
 			assert!(cpu.registers.get(Register::BC) == 0x1234);
+
+			Ok(())
+		})
+	}
+
+	#[test]
+	fn test_jump_relative() -> Result<(), GameboyError> {
+		super::super::tests::with_cpu(|cpu| {
+			// Move the program counter to the RAM bank.
+			cpu.registers.set(Register::PC, 0xA000);
+
+			// Write the jump opcode
+			let data: &[u8] = &[/* JR */ 0x18,
+								/* -2 */ 0xfe];
+
+			cpu.mmap.cartridge.set_ram_enabled(true);
+			cpu.mmap.write_all(cpu.registers.get(Register::PC), data)?;
+
+			cpu.execute_single()?;
+
+			// Make sure BC contains the same value.
+			assert!(cpu.registers.get(Register::PC) == 0xA000);
+
+			Ok(())
+		})
+	}
+
+	#[test]
+	fn test_cpl() -> Result<(), GameboyError> {
+		super::super::tests::with_cpu(|cpu| {
+			// Move the program counter to the RAM bank.
+			cpu.registers.set(Register::PC, 0xA000);
+			cpu.registers.set(Register::AF, 0x1234);
+
+			// Write the jump opcode
+			let data: &[u8] = &[/* CPL */ 0x2f];
+
+			cpu.mmap.cartridge.set_ram_enabled(true);
+			cpu.mmap.write_all(cpu.registers.get(Register::PC), data)?;
+
+			cpu.execute_single()?;
+
+			// Make sure BC contains the same value.
+			assert!(cpu.registers.get(Register::AF) == 0xed34);
 
 			Ok(())
 		})

@@ -7,6 +7,8 @@
 #[macro_use]
 pub mod memory_range;
 pub mod cartridge;
+pub mod joypad;
+pub mod timer;
 pub mod rtc;
 pub mod ram;
 pub mod ppu;
@@ -15,8 +17,11 @@ pub mod io;
 use io::*;
 use ram::*;
 use ppu::*;
+use timer::*;
+use joypad::*;
 use cartridge::*;
 use memory_range::*;
+use timer::consts::MMAP_IO_TIMER;
 use ppu::consts::{MMAP_IO_DISPLAY, MMAP_IO_PALETTES};
 
 use crate::GameboyError;
@@ -42,8 +47,6 @@ pub mod consts {
 	pub const MMAP_IO_PORTS: MemoryRange = make_range!(0xFF00, 0xFF4B);
 	/// High RAM.
 	pub const MMAP_RAM_HIGH: MemoryRange = make_range!(0xFF80, 0xFFFE);
-	/// Interrupt enable register.
-	pub const MMAP_INTERRUPT_EN: MemoryRange = make_range!(0xFFFF, 0xFFFF);
 }
 
 use consts::*;
@@ -69,10 +72,14 @@ pub struct SystemBus<'a> {
 	pub(crate) cartridge: &'a mut Cartridge<'a>,
 	pub(crate) ppu: Ppu,
 	pub(crate) io: IoPorts,
+	pub(crate) timer: Timer,
+	pub(crate) joypad: Joypad,
 	pub(crate) ram: InternalRam,
 
 	/// The IF register.
 	pub interrupt_flag: InterruptMask,
+	/// The IE register.
+	pub interrupt_enable: InterruptMask,
 }
 
 /// An abstraction for fetching mutable and immutable regions.
@@ -95,8 +102,15 @@ macro_rules! get_region {
 					Ok(&$($mut_)* self.ram)
 				}
 
-				// DMA
-				io::consts::IO_DMA => {
+				// Timer
+				memory_range!(MMAP_IO_TIMER) => {
+					Ok(&$($mut_)* self.timer)
+				}
+
+				// DMA and internal IO registers
+				io::consts::IO_DMA |
+				io::consts::IO_IF |
+				io::consts::IO_IE => {
 					Ok(&$($mut_)* *self)
 				}
 
@@ -108,9 +122,13 @@ macro_rules! get_region {
 					Ok(&$($mut_)* self.ppu)
 				}
 
+				// Joypad
+				joypad::consts::IO_P1 => {
+					Ok(&$($mut_)* self.joypad)
+				}
+
 				// I/O registers
-				memory_range!(MMAP_IO_PORTS) |
-				memory_range!(MMAP_INTERRUPT_EN) => {
+				memory_range!(MMAP_IO_PORTS) => {
 					Ok(&$($mut_)* self.io)
 				}
 				_ => {
@@ -128,19 +146,32 @@ impl<'a> SystemBus<'a> {
 			cartridge,
 			ppu: Ppu::new(),
 			io: IoPorts::new(config),
+			timer: Timer::new(config),
+			joypad: Joypad::new(),
 			ram: InternalRam::new(),
 			interrupt_flag: 0,
+			interrupt_enable: 0,
 		}
 	}
 
 	/// Update the system bus peripehrals' state according to
 	/// the elapsed time.
 	pub fn process(&mut self, cycles: usize) {
-		self.ppu.process(cycles);
+		let elapsed = if cycles > 0 { cycles } else { 4 };
+
+		self.ppu.process(elapsed);
+		self.timer.process(elapsed);
+		self.joypad.process(elapsed);
 
 		// Update interrupts state
 		self.interrupt_flag |= self.ppu.interrupts();
+		self.interrupt_flag |= self.timer.interrupts();
+		self.interrupt_flag |= self.joypad.interrupts();
+		self.interrupt_flag &= self.interrupt_enable;
+
 		self.ppu.clear();
+		self.timer.clear();
+		self.joypad.clear();
 	}
 
 	/// Handle reading from a memory region.
@@ -198,10 +229,20 @@ mod private {
 					let source: u16 = (value as u16) << 8;
 
 					// Perform the transfer.
-					for i in 0..0x8B {
+					for i in 0..0xa0 {
 						let data = self.read(source + (i as u16))?;
 						self.ppu.oam()[i] = data;
 					}
+
+					Ok(())
+				}
+				io::consts::IO_IF => {
+					self.interrupt_flag = value;
+
+					Ok(())
+				}
+				io::consts::IO_IE => {
+					self.interrupt_enable = value;
 
 					Ok(())
 				}
@@ -215,6 +256,12 @@ mod private {
 			match address {
 				io::consts::IO_DMA => {
 					Ok(0)
+				}
+				io::consts::IO_IF => {
+					Ok(self.interrupt_flag)
+				}
+				io::consts::IO_IE => {
+					Ok(self.interrupt_enable)
 				}
 				_ => {
 					panic!("Read operation not implemented for register: {}", address);

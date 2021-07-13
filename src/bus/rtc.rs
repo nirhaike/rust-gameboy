@@ -3,6 +3,7 @@
 
 #![deny(missing_docs)]
 //! Emulate the real time clock, that appears in type-3 MBCs.
+//! TODO implement the RTC's functionality.
 
 use super::Memory;
 use crate::GameboyError;
@@ -74,8 +75,8 @@ impl Rtc {
 	}
 
 	/// Increment the clock.
-	pub fn tick(&self) {
-		unimplemented!();
+	pub fn tick(&self, _cycles: usize) {
+		// unimplemented!();
 	}
 
 	/// Fetch the clock data into the rtc's registers.
@@ -83,7 +84,7 @@ impl Rtc {
 	/// The latching process consists of writing 0x00 and then 0x01 to
 	/// the Latch Clock Data register.
 	pub fn latch(&mut self, _value: u8) {
-		unimplemented!();
+		// unimplemented!();
 	}
 
 	/// Set the currently memory mapped RTC register.
@@ -101,11 +102,13 @@ impl Rtc {
 impl Memory for Rtc {
 	/// Writes to the rtc's currently active register.
 	fn write(&mut self, _address: u16, _value: u8) -> Result<(), GameboyError> {
-		unimplemented!();
+		// unimplemented!();
+		Ok(())
 	}
 
 	/// Reads the rtc's currently active register.
 	fn read(&self, _address: u16) -> Result<u8, GameboyError> {
-		unimplemented!();
+		// unimplemented!();
+		Ok(0x31)
 	}
 }

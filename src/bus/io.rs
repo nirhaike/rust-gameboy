@@ -20,10 +20,6 @@ pub mod consts {
 	pub const IO_P1: u16 = 0xFF00;
 	pub const IO_SB: u16 = 0xFF01;
 	pub const IO_SC: u16 = 0xFF02;
-	pub const IO_DIV: u16 = 0xFF04;
-	pub const IO_TIMA: u16 = 0xFF05;
-	pub const IO_TMA: u16 = 0xFF06;
-	pub const IO_TAC: u16 = 0xFF07;
 	pub const IO_IF: u16 = 0xFF0F;
 	pub const IO_NR10: u16 = 0xFF10;
 	pub const IO_NR11: u16 = 0xFF11;
@@ -50,6 +46,8 @@ pub mod consts {
 
 	pub const IO_DMA: u16 = 0xFF46;
 
+	pub const IO_IE: u16 = 0xFFFF;
+
 }
 
 /// Convert address constants to register array offset.
@@ -63,8 +61,6 @@ use consts::*;
 pub struct IoPorts {
 	/// Registers that are mapped to the range 0xFF00-0xFF4B.
 	registers: [u8; IO_SIZE],
-	/// Interrupt enable (0xFFFF).
-	ie: u8,
 }
 
 impl IoPorts {
@@ -72,7 +68,6 @@ impl IoPorts {
 	pub fn new(config: &Config) -> Self {
 		let mut io = IoPorts {
 			registers: [0_u8; IO_SIZE],
-			ie: 0,
 		};
 
 		// Reset the registers' state.
@@ -84,8 +79,6 @@ impl IoPorts {
 	/// Reset the I/O registers.
 	pub fn reset(&mut self, config: &Config) {
 		self.registers[port_offset!(IO_NR10)] = 0x80;
-		self.registers[port_offset!(IO_TMA)] = 0x00;
-		self.registers[port_offset!(IO_TAC)] = 0x00;
 		self.registers[port_offset!(IO_NR10)] = 0x80;
 		self.registers[port_offset!(IO_NR11)] = 0xBF;
 		self.registers[port_offset!(IO_NR12)] = 0xF3;
@@ -107,7 +100,6 @@ impl IoPorts {
 			HardwareModel::SGB => 0xF0,
 			_ => 0xF1,
 		};
-		self.ie = 0x00;
 	}
 }
 
@@ -117,10 +109,6 @@ impl Memory for IoPorts {
 			// Specific behaviors will be added here.
 			memory_range!(MMAP_IO_PORTS) => {
 				self.registers[port_offset!(address)] = value;
-				Ok(())
-			}
-			memory_range!(MMAP_INTERRUPT_EN) => {
-				self.ie = value;
 				Ok(())
 			}
 			_ => {
@@ -134,9 +122,6 @@ impl Memory for IoPorts {
 			// Specific behaviors will be added here.
 			memory_range!(MMAP_IO_PORTS) => {
 				Ok(self.registers[port_offset!(address)])
-			}
-			memory_range!(MMAP_INTERRUPT_EN) => {
-				Ok(self.ie)
 			}
 			_ => {
 				Err(GameboyError::BadAddress(address))

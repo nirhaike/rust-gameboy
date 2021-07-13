@@ -4,6 +4,8 @@
 #![deny(missing_docs)]
 //! The cartridge controller - lazy and zero-copy implementation for loading and
 //! handling IO from/to the game's cartridge.
+//!
+//! [TODO] make this file more organized by creating a trait for memory bank controller.
 
 use crate::GameboyError;
 use super::rtc::*;
@@ -188,9 +190,11 @@ impl<'a> Cartridge<'a> {
 	///
 	/// The acctive ram bank is manipulated by programatically performing a write
 	/// to the `RAM_BANK_SELECT` memory range.
-	fn set_ram_bank(&mut self, _value: u8) -> Result<(), GameboyError> {
-		// TODO implement this.
-		unimplemented!();
+	fn set_ram_bank(&mut self, value: u8) -> Result<(), GameboyError> {
+		// TODO assert that the value is proper.
+		self.ram_bank = value;
+
+		Ok(())
 	}
 
 	/// Implementation of `write` for CartridgeType::RomOnly devices.
