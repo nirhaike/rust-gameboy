@@ -41,16 +41,15 @@ pub struct Cpu<'a> {
 	/// The emulator's configuration
 	pub config: &'a Config,
 
-	/// TODO
-	pub halting: bool,
+	/// Whether the processor is currently halting and waiting for an external interrupt
+	/// in order to resume.
+	halting: bool,
 	/// If we halt the cpu when interrupts are disabled, the original cpu had a bug
 	/// in which it fetches the byte after the halt twice.
 	halt_bug: bool,
 	/// The processor has a delay of a single instruction after EI before actually
 	/// enabling interrupts.
 	ime_delay: bool,
-	/// TODO remove this.
-	countdown: usize,
 }
 
 impl<'a> Cpu<'a> {
@@ -64,7 +63,6 @@ impl<'a> Cpu<'a> {
 			halting: false,
 			halt_bug: false,
 			ime_delay: false,
-			countdown: 0,
 		}
 	}
 
@@ -150,17 +148,6 @@ impl<'a> Cpu<'a> {
 	/// Returns the number of clock cycles the instruction has taken.
 	pub fn execute_single(&mut self) -> Result<usize, GameboyError> {
 		let _address: u16 = self.registers.get(Register::PC);
-
-		if _address == 0x7db8 && self.countdown == 0 {
-			self.countdown = 2000;
-		}
-
-		if self.countdown > 0 {
-			self.countdown -= 1;
-			if self.countdown == 1 {
-				// panic!("SHET");
-			}
-		}
 
 		// Fetch the opcode from the memory.
 		let opcode: u8 = self.fetch()?;
