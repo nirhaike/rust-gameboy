@@ -47,6 +47,7 @@ pub mod consts {
 	pub const MMAP_IO_PORTS: MemoryRange = make_range!(0xFF00, 0xFF7F);
 	/// High RAM.
 	pub const MMAP_RAM_HIGH: MemoryRange = make_range!(0xFF80, 0xFFFE);
+	pub const MMAP_INTERRUPT_EN: MemoryRange = make_range!(0xFFFF, 0xFFFF);
 }
 
 use consts::*;

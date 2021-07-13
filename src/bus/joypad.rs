@@ -10,8 +10,6 @@ use crate::GameboyError;
 use crate::cpu::interrupts::*;
 
 pub mod consts {
-	use super::*;
-
 	pub const IO_P1: u16 = 0xFF00;
 }
 

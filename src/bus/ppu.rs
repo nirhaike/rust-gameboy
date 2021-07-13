@@ -385,7 +385,7 @@ impl Ppu {
 				// Draw the pixel
 				let offset = line_offset + sprite_data.x.wrapping_add(x) as usize;
 
-				if !sprite_data.sprite_behind() || self.buffer[offset] != PALETTE[0] {
+				if !sprite_data.sprite_behind() || self.buffer[offset] == PALETTE[3] {
 					self.buffer[offset] = PALETTE[color];
 				}
 			}
