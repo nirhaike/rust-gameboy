@@ -2,9 +2,9 @@
 
 [![Build](https://github.com/nirhaike/rust-gameboy/actions/workflows/build.yml/badge.svg)](https://github.com/nirhaike/rust-gameboy/actions/workflows/build.yml)
 
-A rust crate that emulates the GameBoy/GameBoy Color's Z80-like CPU and it's peripherals, without using rust's standard library (making it suitable for embedded environments).
+A rust crate that emulates the GameBoy/GameBoy Color's Z80-like CPU and its peripherals, without using rust's standard library (making it suitable for embedded environments).
 
-The crate is currently almost capable of running MBC3 classic gameboy games.
+The crate is currently almost capable of fully running MBC3 classic gameboy games.
 
 <p align="center"><img src="./images/preview.gif" width="157" height="145"/></p>
 
